@@ -2,23 +2,23 @@
 #
 # Adaptation of ECOSMO model for northern latitudes (A20 pan-Arctic domain >~50N), version 3s.
 #
-# Phil Wallhead, NIVA Bergen, 26/07/2025
+# Phil Wallhead (PJW), NIVA Bergen, 26/07/2025
 #
 #
 # Change history
 # --------------
 #
-# PWA 26/07/2025: Copied from /fabm/testcases/fabm-nersc-ecosmo.yaml.
+# PJW 26/07/2025: Copied from /fabm/testcases/fabm-nersc-ecosmo.yaml.
 #                 Following removal of cyanobacteria code, removed switch use_cyanos and cyano parameters.
 #                 Regularized some parameter names (small changes, mostly on capitalization).
 #                 Switched off carbonate chemistry (needs updating to use ERSEM/NERSEM code).
 #                 Removed switch to turn on additional diagnostics.
 #                 Added module niva/niva_ecosmo_carbonate.
 #                 -> A20v3q
-# PWA 09/04/2026: Reordered to fit the revised niva_ecosmo FABM code.
+# PJW 09/04/2026: Reordered to fit the revised niva_ecosmo FABM code.
 #                 This should gives similar results to v3q.
 #                 -> A20v3qc
-# PWA 13/04/2026: Optimized Ps/Pl parameters to incubation datasets for net growth rate and Chl:C
+# PJW 13/04/2026: Optimized Ps/Pl parameters to incubation datasets for net growth rate and Chl:C
 #                 (see fit_model_nanoP_growth.m, fit_model_diatom_growth.m).
 #                 For Ps we fitted (muPs,alfaPs,MAXchl2cPs) while for Pl we fitted (muPl,gammaDPl,alfaPl,betaPl,MAXchl2cPs).
 #                 Q_10 temperature coefficients were fixed at the standard value 2.0, since fitting these
@@ -138,7 +138,7 @@
 # 
 #                 Elsewhere we have kept the nersc parameters used in fabm-nersc-ecosmo.yaml (or hard-coded).
 #                 -> A20v3r
-# PWA 08/05/2026: Added parameters for the new calcification / dissolution processes associated with the
+# PJW 08/05/2026: Added parameters for the new calcification / dissolution processes associated with the
 #                 new detrital calcite state variable. Here we follow the parameter values used in (N)ERSEM (B16).
 #                 (Rain0=1.0,Kcalom=1.0) based on fit-by-eye to experimental data from Gehlen et al. (2007), Fig. 1.
 #                 Zs internal dissolution fraction fdissCZs = 0.5 consistent with observed higher fractions of
@@ -206,16 +206,16 @@ instances:
       rNO3Ps     : 0.50     # NO3 half saturation for Ps      (mmolN/m3),                   default=0.50
       psiPs      : 3.00     # NH4 inhibition for Ps           (m3/mmolN),                   default=3.00
       rPO4Ps     : 0.05     # PO4 half saturation for Ps      (mmolP/m3),                   default=0.05
-      muPs       : 1.51     # max growth rate for Ps          (1/d),                        default=1.10, Modified PWA 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m. mumax = muP * (alfaP/(alfaP+betaP)) * (betaP/(alfaP+betaP))^(betaP/alfaP) = 1.18 d-1.
-      q10Ps      : 2.0      # Q_10 temperature coefficient for Ps  (-),                     default=1.0, Modified PWA 13/04/2026, fixed value, see fit_model_nanoP_growth.m.
-      gammaDPs   : 0.25     # day length adaptation coefficient for Ps (-),                 default=1e12, Modified PWA 13/04/2026, fixed value, see fit_model_nanoP_growth.m.
-      alfaPs     : 4.62     # initial slope P-I curve for Ps  (mgC/(mgChl day W/m2)),       default=3.127, Modified PWA 13/04/2026, fitted to incubation data, see fit_model_nanoP_growth.m.
-      betaPs     : 0.3      # photoinhibition parameter for Ps (mgC/(mgChl day W/m2)),      default=0.0, Modified PWA 13/04/2026, fixed value, see fit_model_nanoP_growth.m.
+      muPs       : 1.51     # max growth rate for Ps          (1/d),                        default=1.10, Modified PJW 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m. mumax = muP * (alfaP/(alfaP+betaP)) * (betaP/(alfaP+betaP))^(betaP/alfaP) = 1.18 d-1.
+      q10Ps      : 2.0      # Q_10 temperature coefficient for Ps  (-),                     default=1.0, Modified PJW 13/04/2026, fixed value, see fit_model_nanoP_growth.m.
+      gammaDPs   : 0.25     # day length adaptation coefficient for Ps (-),                 default=1e12, Modified PJW 13/04/2026, fixed value, see fit_model_nanoP_growth.m.
+      alfaPs     : 4.62     # initial slope P-I curve for Ps  (mgC/(mgChl day W/m2)),       default=3.127, Modified PJW 13/04/2026, fitted to incubation data, see fit_model_nanoP_growth.m.
+      betaPs     : 0.3      # photoinhibition parameter for Ps (mgC/(mgChl day W/m2)),      default=0.0, Modified PJW 13/04/2026, fixed value, see fit_model_nanoP_growth.m.
       MINchl2cPs : 0.0033   # minimum Chl to C ratio Ps       (mgChl/mgC),                  default=0.0063
-      MAXchl2cPs : 0.0325   # maximum Chl to C ratio Ps       (mgChl/mgC),                  default=0.0481, Modified PWA 13/04/2026, fitted to incubation data, see fit_model_nanoP_growth.m.
+      MAXchl2cPs : 0.0325   # maximum Chl to C ratio Ps       (mgChl/mgC),                  default=0.0481, Modified PJW 13/04/2026, fitted to incubation data, see fit_model_nanoP_growth.m.
       amortPs    : 10.0     # ratio max:min Ps mortality under nutrient limitation (-),     default=1.0
       m1Ps       : 0.08     # linear Ps mortality rate        (1/d),                        default=0.08
-      m2Ps       : 0.0005   # quadratic Ps mortality rate     (m3/(mgC day))                default=0.0, Modified PWA 13/04/2026, fixed value, see notes.
+      m2Ps       : 0.0005   # quadratic Ps mortality rate     (m3/(mgC day))                default=0.0, Modified PJW 13/04/2026, fixed value, see notes.
       frmort1Ps  : 0.4      # dissolved fraction of linear mortality (-),                   default=0.4
       frmort2Ps  : 0.3      # dissolved fraction of quadratic mortality (-),                default=0.4
 
@@ -225,16 +225,16 @@ instances:
       rPO4Pl     : 0.05     # PO4 half saturation for Pl      (mmolP/m3),                   default=0.05
       rSiPl      : 0.50     # SiO2 half saturation for Pl     (mmolSi/m3),                  default=0.50
       minSiPl    : 0.0      # stop Si uptake below this concentration (mmolSi/m3),          default=0.0
-      muPl       : 1.98     # max growth rate for Pl          (1/d),                        default=1.30, Modified PWA 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m. mumax = muP * (alfaP/(alfaP+betaP)) * (betaP/(alfaP+betaP))^(betaP/alfaP) = 1.51 d-1.
-      q10Pl      : 2.0      # Q_10 temperature coefficient for Pl  (-),                     default=1.0, Modified PWA 13/04/2026, fixed value, see fit_model_diatom_growth.m.
-      gammaDPl   : 0.447    # day length adaptation coefficient for Pl (-),                 default=1e12, Modified PWA 13/04/2026, fitted value, see fit_model_diatom_growth.m.
-      alfaPl     : 3.93     # initial slope P-I curve for Pl  (mgC/(mgChl day W/m2)),       default=4.225, Modified PWA 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m.
-      betaPl     : 0.290    # photoinhibition parameter for Pl (mgC/(mgChl day W/m2)),      default=0.0, Modified PWA 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m.
+      muPl       : 1.98     # max growth rate for Pl          (1/d),                        default=1.30, Modified PJW 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m. mumax = muP * (alfaP/(alfaP+betaP)) * (betaP/(alfaP+betaP))^(betaP/alfaP) = 1.51 d-1.
+      q10Pl      : 2.0      # Q_10 temperature coefficient for Pl  (-),                     default=1.0, Modified PJW 13/04/2026, fixed value, see fit_model_diatom_growth.m.
+      gammaDPl   : 0.447    # day length adaptation coefficient for Pl (-),                 default=1e12, Modified PJW 13/04/2026, fitted value, see fit_model_diatom_growth.m.
+      alfaPl     : 3.93     # initial slope P-I curve for Pl  (mgC/(mgChl day W/m2)),       default=4.225, Modified PJW 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m.
+      betaPl     : 0.290    # photoinhibition parameter for Pl (mgC/(mgChl day W/m2)),      default=0.0, Modified PJW 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m.
       MINchl2cPl : 0.0033   # minimum Chl to C ratio Pl       (mgChl/mgC),                  default=0.0063
-      MAXchl2cPl : 0.0680   # maximum Chl to C ratio Pl       (mgChl/mgC),                  default=0.0370, Modified PWA 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m.
+      MAXchl2cPl : 0.0680   # maximum Chl to C ratio Pl       (mgChl/mgC),                  default=0.0370, Modified PJW 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m.
       amortPl    : 10.0     # ratio max:min Pl mortality under nutrient limitation (-),     default=1.0
       m1Pl       : 0.04     # linear Pl mortality rate        (1/d),                        default=0.04
-      m2Pl       : 0.0005   # quadratic Pl mortality rate     (m3/(mgC day))                default=0.0, Modified PWA 13/04/2026, fixed value, see notes.
+      m2Pl       : 0.0005   # quadratic Pl mortality rate     (m3/(mgC day))                default=0.0, Modified PJW 13/04/2026, fixed value, see notes.
       frmort1Pl  : 0.4      # dissolved fraction of linear mortality (-),                   default=0.4
       frmort2Pl  : 0.2      # dissolved fraction of quadratic mortality (-),                default=0.4
 
@@ -242,53 +242,53 @@ instances:
       GrZsPl     : 1.00     # Grazing rate Zs on Pl           (1/d),                        default=1.00
       GrZsZs     : 0.50     # Grazing rate Zs on Zs           (1/d),                        default=0.00
       GrZsD      : 1.00     # Grazing rate Zs on Det          (1/d),                        default=1.00
-      prefZsPs   : 1.00     # Grazing preference Zs on Ps     (-),                          default=0.70, Modified PWA 13/04/2026, rescaled for maximum preference = 1.
-      prefZsPl   : 0.35     # Grazing preference Zs on Pl     (-),                          default=0.25, Modified PWA 13/04/2026, rescaled for maximum preference = 1.
+      prefZsPs   : 1.00     # Grazing preference Zs on Ps     (-),                          default=0.70, Modified PJW 13/04/2026, rescaled for maximum preference = 1.
+      prefZsPl   : 0.35     # Grazing preference Zs on Pl     (-),                          default=0.25, Modified PJW 13/04/2026, rescaled for maximum preference = 1.
       prefZsZs   : 0.20     # Grazing preference Zs on Zs     (-),                          default=0.00
-      prefZsD    : 0.12     # Grazing preference Zs on Det.   (-),                          default=0.00, Modified PWA 13/04/2026, rescaled for maximum preference = 1.
-      RgZs       : 35.0     # Zs grazing half saturation      (mgC/m3),                     default=40.0, Modified PWA 13/04/2026, rescaled for maximum preference = 1.
-      q10Zs      : 2.0      # Q_10 temperature coefficient for Zs (-),                      default=1.0, Modified PWA 13/04/2026, see notes above.
+      prefZsD    : 0.12     # Grazing preference Zs on Det.   (-),                          default=0.00, Modified PJW 13/04/2026, rescaled for maximum preference = 1.
+      RgZs       : 35.0     # Zs grazing half saturation      (mgC/m3),                     default=40.0, Modified PJW 13/04/2026, rescaled for maximum preference = 1.
+      q10Zs      : 2.0      # Q_10 temperature coefficient for Zs (-),                      default=1.0, Modified PJW 13/04/2026, see notes above.
       gammaZsP   : 0.75     # Zs assim. eff. on plankton      (-),                          default=0.75
-      gammaZsD   : 0.50     # Zs assim. eff. on det           (-),                          default=0.75, Modified PWA 13/04/2026, see notes above.
+      gammaZsD   : 0.50     # Zs assim. eff. on det           (-),                          default=0.75, Modified PJW 13/04/2026, see notes above.
       fregesZs   : 0.4      # dissolved fraction of Zs egestion (-),                        default=0.4
-      excZs      : 0.02     # Zs basal excretion/resp. rate   (1/d),                        default=0.08, Modified PWA 13/04/2026, see notes above.
+      excZs      : 0.02     # Zs basal excretion/resp. rate   (1/d),                        default=0.08, Modified PJW 13/04/2026, see notes above.
       fAexcZs    : 0.5      # Zs fraction of assimilated food that is excreted/respired (-),default=0.0
-      fexcdomZs  : 0.5      # Zs fraction of excreted/respired matter that is dom (-),      default=0.0, Modified PWA 13/04/2026, fixed value, see notes above.
-      mZs        : 0.05     # Zs mortality rate               (1/d),                        default=0.20, Modified PWA 13/04/2026, fixed value, see notes above.
-      q10mZs     : 2.0      # Q_10 temperature coefficient for Zs mortality (-),            default=1.0, Modified PWA 13/04/2026, fixed value, see notes above.
+      fexcdomZs  : 0.5      # Zs fraction of excreted/respired matter that is dom (-),      default=0.0, Modified PJW 13/04/2026, fixed value, see notes above.
+      mZs        : 0.05     # Zs mortality rate               (1/d),                        default=0.20, Modified PJW 13/04/2026, fixed value, see notes above.
+      q10mZs     : 2.0      # Q_10 temperature coefficient for Zs mortality (-),            default=1.0, Modified PJW 13/04/2026, fixed value, see notes above.
       frmortZs   : 0.4      # dissolved fraction of Zs mortality (-),                       default=0.4
 
-      GrZlPs     : 0.60     # Grazing rate Zl on Ps           (1/d),                        default=0.80, Modified PWA 13/04/2026, fitted value, see fit_model_mesoZ_growth.m and notes above.
-      GrZlPl     : 0.60     # Grazing rate Zl on Pl           (1/d),                        default=0.80, Modified PWA 13/04/2026, see notes above.
-      GrZlZs     : 0.40     # Grazing rate Zl on Zs           (1/d),                        default=0.50, Modified PWA 13/04/2026, see notes above.
-      GrZlZl     : 0.20     # Grazing rate Zl on Zl           (1/d),                        default=0.00, Modified PWA 13/04/2026, see notes above.
-      GrZlD      : 0.60     # Grazing rate Zl on Det          (1/d),                        default=0.80, Modified PWA 13/04/2026, see notes above.
-      prefZlPs   : 0.50     # Grazing preference Zl on Ps     (-),                          default=0.10, Modified PWA 13/04/2026, see notes above.
-      prefZlPl   : 1.00     # Grazing preference Zl on Pl     (-),                          default=0.85, Modified PWA 13/04/2026, see notes above.
-      prefZlZs   : 1.00     # Grazing preference Zl on Zs     (-),                          default=0.15, Modified PWA 13/04/2026, see notes above.
-      prefZlZl   : 0.25     # Grazing preference Zl on Zl     (-),                          default=0.00, Modified PWA 13/04/2026, see notes above.
-      prefZlD    : 0.50     # Grazing preference Zl on Det.   (-),                          default=0.00, Modified PWA 13/04/2026, see notes above.
-      RgZl       : 33.0     # Zl grazing half saturation      (mgC/m3),                     default=40.0, Modified PWA 13/04/2026, rescaled for maximum preference = 1.
-      q10Zl      : 2.8      # Q_10 temperature coefficient for Zl (-),                      default=1.0, Modified PWA 13/04/2026, fixed value, see fit_model_mesoZ_growth.m.
+      GrZlPs     : 0.60     # Grazing rate Zl on Ps           (1/d),                        default=0.80, Modified PJW 13/04/2026, fitted value, see fit_model_mesoZ_growth.m and notes above.
+      GrZlPl     : 0.60     # Grazing rate Zl on Pl           (1/d),                        default=0.80, Modified PJW 13/04/2026, see notes above.
+      GrZlZs     : 0.40     # Grazing rate Zl on Zs           (1/d),                        default=0.50, Modified PJW 13/04/2026, see notes above.
+      GrZlZl     : 0.20     # Grazing rate Zl on Zl           (1/d),                        default=0.00, Modified PJW 13/04/2026, see notes above.
+      GrZlD      : 0.60     # Grazing rate Zl on Det          (1/d),                        default=0.80, Modified PJW 13/04/2026, see notes above.
+      prefZlPs   : 0.50     # Grazing preference Zl on Ps     (-),                          default=0.10, Modified PJW 13/04/2026, see notes above.
+      prefZlPl   : 1.00     # Grazing preference Zl on Pl     (-),                          default=0.85, Modified PJW 13/04/2026, see notes above.
+      prefZlZs   : 1.00     # Grazing preference Zl on Zs     (-),                          default=0.15, Modified PJW 13/04/2026, see notes above.
+      prefZlZl   : 0.25     # Grazing preference Zl on Zl     (-),                          default=0.00, Modified PJW 13/04/2026, see notes above.
+      prefZlD    : 0.50     # Grazing preference Zl on Det.   (-),                          default=0.00, Modified PJW 13/04/2026, see notes above.
+      RgZl       : 33.0     # Zl grazing half saturation      (mgC/m3),                     default=40.0, Modified PJW 13/04/2026, rescaled for maximum preference = 1.
+      q10Zl      : 2.8      # Q_10 temperature coefficient for Zl (-),                      default=1.0, Modified PJW 13/04/2026, fixed value, see fit_model_mesoZ_growth.m.
       fGslpZlPs  : 0.10     # Zl fraction of Ps-grazing that is slopped (not ingested) (-), default=0.0
       fGslpZlPl  : 0.30     # Zl fraction of Pl-grazing that is slopped (not ingested) (-), default=0.0
       fGslpZlZs  : 0.30     # Zl fraction of Zs-grazing that is slopped (not ingested) (-), default=0.0
       fGslpZlZl  : 0.40     # Zl fraction of Zl-grazing that is slopped (not ingested) (-), default=0.0
       fGslpZlD   : 0.20     # Zl fraction of Det-grazing that is slopped (not ingested) (-),default=0.0
-      gammaZlP   : 0.70     # Zl assim. eff. on plankton      (-),                          default=0.75, Modified PWA 13/04/2026, fixed value, see fit_model_mesoZ_growth.m and notes above.
-      gammaZlD   : 0.50     # Zl assim. eff. on det           (-),                          default=0.75, Modified PWA 13/04/2026, see notes above.
+      gammaZlP   : 0.70     # Zl assim. eff. on plankton      (-),                          default=0.75, Modified PJW 13/04/2026, fixed value, see fit_model_mesoZ_growth.m and notes above.
+      gammaZlD   : 0.50     # Zl assim. eff. on det           (-),                          default=0.75, Modified PJW 13/04/2026, see notes above.
       fregesZl   : 0.2      # dissolved fraction of Zl egestion (-),                        default=0.4
-      excZl      : 0.02     # Zl basal excretion/resp. rate   (1/d),                        default=0.08, Modified PWA 13/04/2026, fixed value, see fit_model_mesoZ_growth.m and notes above.
-      fAexcZl    : 0.37     # Zl fraction of assimilated food that is excreted/respired (-),default=0.37, Modified PWA 13/04/2026, fitted value, see fit_model_mesoZ_growth.m and notes above.
-      fexcdomZl  : 0.5      # Zl fraction of excreted/respired matter that is dom (-),      default=0.0, Modified PWA 13/04/2026, fixed value, see fit_model_mesoZ_growth.m and notes above.
-      mZl        : 0.02     # Zl basal mortality rate         (1/d),                        default=0.20, Modified PWA 13/04/2026, fixed value, see fit_model_mesoZ_growth.m and notes above.
-      mvZl       : 0.04     # Z1 visual predation mortality   (1/d),                        default=0.0, Modified PWA 13/04/2026, see notes above.
-      KE0mvZl    : 2.2      # Half-saturation PAR for Zl visual predation mortality (W/m2)  default=2.2, Modified PWA 13/04/2026, see notes above.
-      q10mZl     : 2.0      # Q_10 temperature coefficient for Zl mortality (-),            default=1.0, Modified PWA 13/04/2026, see notes above.
-      frmortZl   : 0.2      # dissolved fraction of Zl mortality (-),                       default=0.4, Modified PWA 13/04/2026, see notes above.
+      excZl      : 0.02     # Zl basal excretion/resp. rate   (1/d),                        default=0.08, Modified PJW 13/04/2026, fixed value, see fit_model_mesoZ_growth.m and notes above.
+      fAexcZl    : 0.37     # Zl fraction of assimilated food that is excreted/respired (-),default=0.37, Modified PJW 13/04/2026, fitted value, see fit_model_mesoZ_growth.m and notes above.
+      fexcdomZl  : 0.5      # Zl fraction of excreted/respired matter that is dom (-),      default=0.0, Modified PJW 13/04/2026, fixed value, see fit_model_mesoZ_growth.m and notes above.
+      mZl        : 0.02     # Zl basal mortality rate         (1/d),                        default=0.20, Modified PJW 13/04/2026, fixed value, see fit_model_mesoZ_growth.m and notes above.
+      mvZl       : 0.04     # Z1 visual predation mortality   (1/d),                        default=0.0, Modified PJW 13/04/2026, see notes above.
+      KE0mvZl    : 2.2      # Half-saturation PAR for Zl visual predation mortality (W/m2)  default=2.2, Modified PJW 13/04/2026, see notes above.
+      q10mZl     : 2.0      # Q_10 temperature coefficient for Zl mortality (-),            default=1.0, Modified PJW 13/04/2026, see notes above.
+      frmortZl   : 0.2      # dissolved fraction of Zl mortality (-),                       default=0.4, Modified PJW 13/04/2026, see notes above.
 
-      eta_PQ     : 1.1      # photosynthetic quotient: moles O2 produced per mole C fixed (-), default=1.0, Modified PWA 13/04/2026, see notes above.
-      eta_O2resp : 1.4      # respiration quotient: moles O2 consumed per mole C respired (-), default=1.0, Modified PWA 13/04/2026, see notes above.
+      eta_PQ     : 1.1      # photosynthetic quotient: moles O2 produced per mole C fixed (-), default=1.0, Modified PJW 13/04/2026, see notes above.
+      eta_O2resp : 1.4      # respiration quotient: moles O2 consumed per mole C respired (-), default=1.0, Modified PJW 13/04/2026, see notes above.
       eta_denit  : 5.3      # denitrification moles NO3 used per mole N in organic matter (-), default=5.3
       eta_SO4resp: 1.0      # SO4 respiration quotient: moles negative O2 produced per mole C respired (-), default=1.0
       eta_nitrif : 2.0      # nitrification quotient: moles O2 consumed per mole NH4 nitrified (-), default=2.0
