@@ -11,6 +11,9 @@
 !                 Removed parameter vector BioC, replacing with named parameters.
 !                 Tidied up formatting and deleted some commented-out experimental code.
 !
+! PJW 02/08/2025: Replaced simplified oxygen flux parameterization in do_surface with Wanninkhof (2014)
+!                 parameterization used in ERSEM.
+!
 ! PJW 30/03/2026: Major revisions of phytoplankton growth parameterizations:
 !                 1) Added simple Q10 temperature dependence and daylength dependence of maximum growth rate
 !                    following Gilstad and Sakshaug (1990) (as in NERSEM, cf. PISCESv2, Aumont et al., 2015).
@@ -174,6 +177,19 @@
 !                 We therefore added back the do subroutine to the module niva_ecosmo_carbonate that
 !                 should be used with this module, and renamed the old code to niva_ecosmo_carbonate_nocalc.
 !
+! PJW 21/05/2026: 1) Added linear depth dependence parameters for sinking rates (cz_sinkD, cz_sinkOPAL, cz_sinkCAL)
+!                 to achieve Martin curve flux variations following A15 and Middelburg (2019).
+!                 2) Added Ridgwell et al. (2002) model for water column opal dissolution rate as a function of
+!                 temperature and degree of undersaturation, following PISCES model (A15) and NERSEM model.
+!                 The parameter dissO now defines the rate at 0 degC and full undersaturation (sil=0).
+!                 Note: the sediment opal dissolution rate should also increase with bottom temperature and degree
+!                 of Si undersaturation, but since these both increase towards coastal/shelf regions, their
+!                 effects are likely counterracted by an increase in Al/Si associated with lithogenic sediment
+!                 deposition (Van Cappellen et al., 2002; Ridgwell et al., 2002; Sarmiento and Gruber, 2006).
+!                 We therefore keep the simple flat rate constant for now in lieu of a method to account for
+!                 Al/Si ratio variations.
+!                 3) Added diagnostic coccolithophore biomass ('cocco') based on rain ratio approach.
+!
 !
 !References (short form)
 !
@@ -196,10 +212,14 @@
 ! Platt et al. (1980), Journal of Marine Research 38, 687–701.
 ! Ridgwell et al. (2002), doi:10.1029/2002GB001877
 ! Sanz-Martin et al. (2019), doi:10.3389/fmars.2019.00468
+! Sarmiento and Gruber (2006), doi:10.1017/S0016756807003755
 ! Steinberg and Landry (2017), doi:10.1146/annurev-marine-010814-015924
 ! Stephens et al. (2025), doi.org/10.1038/s42003-025-07574-2
 ! Stigebrandt and Wulff (1987), doi:10.1357/002224087788326812
 ! Tanioka and Matsumoto (2020), doi:10.1029/2019GL085564
+! Van Cappellen and Qiu (1997a), doi:10.1016/S0967-0645(96)00113-0
+! Van Cappellen and Qiu (1997b), doi:10.1016/S0967-0645(96)001129
+! Van Cappellen et al. (2002), doi:10.1029/2001GB001431
 ! Yool et al. (2013), doi:10.5194/gmd-6-1767-2013
 ! Yumruktepe et al. (2022) (Y22), doi:10.5194/gmd-15-3901-2022
 ! -----------------------------------------------------------------------------------------------------------
@@ -235,10 +255,10 @@
       type (type_state_variable_id)         :: id_mesozoo, id_microzoo, id_dom, id_oxy
       type (type_state_variable_id)         :: id_dic, id_alk
       type (type_bottom_state_variable_id)  :: id_sed1, id_sed2, id_sed3, id_sed4
-      type (type_dependency_id)             :: id_temp, id_salt, id_E0, id_om_cal
+      type (type_dependency_id)             :: id_depth, id_temp, id_salt, id_E0, id_om_cal
       type (type_horizontal_dependency_id)  :: id_tbs, id_wnd, id_aice, id_day_length
       type (type_diagnostic_variable_id)    :: id_denit, id_primprod, id_secprod
-      type (type_diagnostic_variable_id)    :: id_c2chl_fla, id_c2chl_dia
+      type (type_diagnostic_variable_id)    :: id_c2chl_fla, id_c2chl_dia, id_cocco, id_coccochl
       type (type_diagnostic_variable_id)    :: id_NlimPs, id_NlimPl, id_PlimPs, id_PlimPl, id_SilimPl
       type (type_diagnostic_variable_id)    :: id_NutlimPs, id_NutlimPl
       type (type_horizontal_diagnostic_variable_id)    :: id_tbsout
@@ -263,7 +283,7 @@
       real(rk) :: eta_PQ, eta_O2resp, eta_denit, eta_SO4resp, eta_nitrif
       real(rk) :: nitrifmax, aTnitrif, KO2nitrif, reminD, dissO
       real(rk) :: Rain0, Kcalom, fdissCZs, fdissCZl, dissCmax, ndissC
-      real(rk) :: sinkD, sinkOPAL, sinkCAL
+      real(rk) :: sinkD, sinkOPAL, sinkCAL, cz_sinkD, cz_sinkOPAL, cz_sinkCAL
       real(rk) :: crBotStr, resuspRt, burialRt, burialRt2, reminSED, aTreminSED
       real(rk) :: dissSEDO, burialRtO, burialRt2O
       real(rk) :: dissSEDCmax, dissSEDCmin, ndissSEDC, burialRtC, burialRt2C
@@ -280,6 +300,7 @@
       procedure :: do
       procedure :: do_surface
       procedure :: do_bottom
+      procedure :: get_vertical_movement
 
    end type type_niva_ecosmo
 !EOP
@@ -318,14 +339,14 @@
    ! set Redfield ratios:
    redf(1) = 6.625_rk      !C_N
    redf(2) = 106.0_rk      !C_P
-   redf(3) = 6.625_rk      !C_SiO
+   redf(3) = 6.625_rk      !C_Si
    redf(4) = 16.0_rk       !N_P
-   redf(5) = 1.0_rk        !N_SiO
-   redf(6) = 12.01_rk      !C_Cmg
-   redf(7) = 44.6608009_rk !O2mm_ml
-   redf(8) = 14.007_rk     !N_Nmg
-   redf(9) = 30.97_rk      !P_Pmg
-   redf(10) = 28.09_rk     !Si_Simg
+   redf(5) = 1.0_rk        !N_Si
+   redf(6) = 12.01_rk      !Cg_C
+   redf(7) = 44.6608009_rk !O2u_O2ml
+   redf(8) = 14.007_rk     !Ng_N
+   redf(9) = 30.97_rk      !Pg_P
+   redf(10) = 28.09_rk     !Sig_Si
    do i=1,10
      redf(i+10) = 1._rk/redf(i)
    end do
@@ -440,11 +461,11 @@
    call self%get_parameter( self%eta_nitrif,'eta_nitrif','-',          'nitrification quotient: moles O2 consumed per mole NH4 nitrified', default=2.0_rk) !Default from Middelburg (2019): NH4 + 2O2 -> NO3 + 2H + H2O
 
    ! remineralization/regeneration parameters
-   call self%get_parameter( self%nitrifmax,'nitrifmax',  '1/day',      'max nitrification rate',          default=0.1_rk,   scale_factor=1.0_rk/sedy0) !Default follows Stigebrandt and Wulff (1987).
+   call self%get_parameter( self%nitrifmax,'nitrifmax',  '1/day',      'maximum nitrification rate',      default=0.1_rk,   scale_factor=1.0_rk/sedy0) !Default follows Stigebrandt and Wulff (1987).
    call self%get_parameter( self%aTnitrif,'aTnitrif',    '1/degC',     'temp. control nitrification',     default=0.11_rk) !Default follows Stigebrandt and Wulff (1987).
    call self%get_parameter( self%KO2nitrif,'KO2nitrif',  'mmolO2/m3',  'O2 half saturation for nitrification', default=0.45_rk) !Default from 0.01*44.6608009, with 0.01 from Stigebrandt and Wulff (1987).
-   call self%get_parameter( self%reminD,  'reminD',      '1/day',      'Detritus remin. rate',            default=0.003_rk, scale_factor=1.0_rk/sedy0)
-   call self%get_parameter( self%dissO,   'dissO',       '1/day',      'Opal dissolution rate',           default=0.015_rk, scale_factor=1.0_rk/sedy0)
+   call self%get_parameter( self%reminD,  'reminD',      '1/day',      'detritus remin. rate',            default=0.003_rk, scale_factor=1.0_rk/sedy0)
+   call self%get_parameter( self%dissO,   'dissO',       '1/day',      'opal dissolution rate (0 degC, sil=0)', default=0.015_rk, scale_factor=1.0_rk/sedy0)
 
    ! calcite formation/dissolution parameters
    call self%get_parameter( self%Rain0,   'Rain0',       '-',          'maximum Rain Ratio (PIC:POC) within calcifiers', default=1.0_rk)
@@ -455,9 +476,12 @@
    call self%get_parameter( self%ndissC,  'ndissC',      '-',          'power of the dissolution law (Keir 1980)', default=2.22_rk)
 
    ! sinking parameters
-   call self%get_parameter( self%sinkD,   'sinkD',       'm/day',      'Detritus sinking rate',           default=5.0_rk,   scale_factor=1.0_rk/sedy0)
-   call self%get_parameter( self%sinkOPAL,'sinkOPAL',    'm/day',      'OPAL sinking rate',               default=5.0_rk,   scale_factor=1.0_rk/sedy0)
-   call self%get_parameter( self%sinkCAL, 'sinkCAL',     'm/day',      'Calcite sinking rate',            default=5.0_rk,   scale_factor=1.0_rk/sedy0)
+   call self%get_parameter( self%sinkD,   'sinkD',       'm/day',      'minimum detritus sinking rate',   default=5.0_rk,   scale_factor=1.0_rk/sedy0)
+   call self%get_parameter( self%sinkOPAL,'sinkOPAL',    'm/day',      'minimum OPAL sinking rate',       default=5.0_rk,   scale_factor=1.0_rk/sedy0)
+   call self%get_parameter( self%sinkCAL, 'sinkCAL',     'm/day',      'minimum calcite sinking rate',    default=5.0_rk,   scale_factor=1.0_rk/sedy0)
+   call self%get_parameter( self%cz_sinkD,'cz_sinkD',    '1/day',      'detritus sinking rate increase per metre below surface', default=0.0_rk, scale_factor=1.0_rk/sedy0)
+   call self%get_parameter( self%cz_sinkOPAL,'cz_sinkOPAL','1/day',    'opal sinking rate increase per metre below surface', default=0.0_rk, scale_factor=1.0_rk/sedy0)
+   call self%get_parameter( self%cz_sinkCAL,'cz_sinkCAL','1/day',      'calcite sinking rate increase per metre below surface', default=0.0_rk, scale_factor=1.0_rk/sedy0)
 
    ! sediment module parameters
    call self%get_parameter( self%crBotStr,'crBotStr',    'N/m2',       'critic. bot. stress for resusp.', default=0.007_rk)
@@ -484,33 +508,33 @@
    call self%get_parameter( self%use_aice,'use_aice',     '',          'use ice area to limit air-sea flux',default=.false.)
 
    ! Register state variables
-   call self%register_state_variable( self%id_no3,      'no3',     'mgC/m3',    'nitrate',                   minimum=0.0_rk,        vertical_movement=0.0_rk,  &
+   call self%register_state_variable( self%id_no3,      'no3',     'mgC/m3',    'nitrate',                   minimum=0.0_rk, &
                                       initial_value=5.0_rk*redf(1)*redf(6)  )
-   call self%register_state_variable( self%id_nh4,      'nh4',     'mgC/m3',    'ammonium',                  minimum=0.0_rk,        vertical_movement=0.0_rk,  &
+   call self%register_state_variable( self%id_nh4,      'nh4',     'mgC/m3',    'ammonium',                  minimum=0.0_rk, &
                                       initial_value=0.1_rk*redf(1)*redf(6)  )
-   call self%register_state_variable( self%id_pho,      'pho',     'mgC/m3',    'phosphate',                 minimum=0.0_rk,        vertical_movement=0.0_rk,  &
+   call self%register_state_variable( self%id_pho,      'pho',     'mgC/m3',    'phosphate',                 minimum=0.0_rk, &
                                       initial_value=0.3_rk*redf(2)*redf(6)  )
-   call self%register_state_variable( self%id_sil,      'sil',     'mgC/m3',    'silicate',                  minimum=0.0_rk,        vertical_movement=0.0_rk,  &
+   call self%register_state_variable( self%id_sil,      'sil',     'mgC/m3',    'silicate',                  minimum=0.0_rk, &
                                       initial_value=5.0_rk*redf(3)*redf(6)  )
-   call self%register_state_variable( self%id_oxy,      'oxy',     'mmolO2/m3', 'oxygen',                    minimum=0.0_rk,   vertical_movement=0.0_rk,  &
+   call self%register_state_variable( self%id_oxy,      'oxy',     'mmolO2/m3', 'oxygen',                    minimum=0.0_rk, &
                                       initial_value=85.0_rk  )
-   call self%register_state_variable( self%id_fla,      'fla',     'mgC/m3',    'small phytoplankton',       minimum=1.0e-7_rk,     vertical_movement=0.0_rk, &
+   call self%register_state_variable( self%id_fla,      'fla',     'mgC/m3',    'small phytoplankton',       minimum=1.0e-7_rk, &
                                       initial_value=1e-4_rk*redf(1)*redf(6))
-   call self%register_state_variable( self%id_dia,      'dia',     'mgC/m3',    'large phytoplankton',       minimum=1.0e-7_rk,     vertical_movement=0.0_rk, &
+   call self%register_state_variable( self%id_dia,      'dia',     'mgC/m3',    'large phytoplankton',       minimum=1.0e-7_rk, &
                                       initial_value=1e-4_rk*redf(1)*redf(6) )
-   call self%register_state_variable( self%id_flachl,   'flachl',  'mgChl/m3',  'small phytoplankton chl-a', minimum=1.0e-7_rk/20., vertical_movement=0.0_rk, &
+   call self%register_state_variable( self%id_flachl,   'flachl',  'mgChl/m3',  'small phytoplankton chl-a', minimum=1.0e-7_rk/20., &
                                       initial_value=1e-4_rk*redf(1)*redf(6)/20.)
-   call self%register_state_variable( self%id_diachl,   'diachl',  'mgChl/m3',  'large phytoplankton chl-a', minimum=1.0e-7_rk/27., vertical_movement=0.0_rk, &
+   call self%register_state_variable( self%id_diachl,   'diachl',  'mgChl/m3',  'large phytoplankton chl-a', minimum=1.0e-7_rk/27., &
                                       initial_value=1e-4_rk*redf(1)*redf(6)/27.)
-   call self%register_state_variable( self%id_microzoo, 'microzoo','mgC/m3',    'microzooplankton',          minimum=1.0e-7_rk,     vertical_movement=0.0_rk, &
+   call self%register_state_variable( self%id_microzoo, 'microzoo','mgC/m3',    'microzooplankton',          minimum=1.0e-7_rk, &
                                       initial_value=1e-6_rk*redf(1)*redf(6) )
-   call self%register_state_variable( self%id_mesozoo,  'mesozoo', 'mgC/m3',    'mesozooplankton',           minimum=1.0e-7_rk,     vertical_movement=0.0_rk, &
+   call self%register_state_variable( self%id_mesozoo,  'mesozoo', 'mgC/m3',    'mesozooplankton',           minimum=1.0e-7_rk, &
                                       initial_value=1e-6_rk*redf(1)*redf(6) )
-   call self%register_state_variable( self%id_det,      'det',     'mgC/m3',    'detritus',                  minimum=0.0_rk, vertical_movement=-self%sinkD,   &
+   call self%register_state_variable( self%id_det,      'det',     'mgC/m3',    'detritus',                  minimum=0.0_rk, &
                                       initial_value=2.0_rk*redf(1)*redf(6)  )
-   call self%register_state_variable( self%id_opa,      'opa',     'mgC/m3',    'opal',                      minimum=0.0_rk, vertical_movement=-self%sinkOPAL,&
+   call self%register_state_variable( self%id_opa,      'opa',     'mgC/m3',    'opal',                      minimum=0.0_rk, &
                                       initial_value=2.0_rk*redf(3)*redf(6) )
-   call self%register_state_variable( self%id_cal,      'cal',     'mgC/m3',    'calcite',                   minimum=0.0_rk, vertical_movement=-self%sinkCAL, &
+   call self%register_state_variable( self%id_cal,      'cal',     'mgC/m3',    'calcite',                   minimum=0.0_rk, &
                                       initial_value=0.05_rk ) !Initial value from ERSEM
    call self%register_state_variable( self%id_dom,      'dom',     'mgC/m3',    'labile dissolved om',       minimum=0.0_rk , &
                                       initial_value=3.0_rk*redf(1)*redf(6)   )
@@ -550,8 +574,13 @@
          'daily-mean C to CHL ratio for flagellates', output=output_time_step_averaged)
    call self%register_diagnostic_variable(self%id_c2chl_dia,'c2chl_dia','mgC/mgCHL', &
          'daily-mean C to CHL ratio for diatoms', output=output_time_step_averaged)
+   call self%register_diagnostic_variable(self%id_cocco,'cocco','mgC/m**3', &
+         'diagnostic coccolithophore biomass concentration', output=output_time_step_averaged)
+   call self%register_diagnostic_variable(self%id_coccochl,'coccochl','mgCHL/m**3', &
+         'diagnostic coccolithophore chlorophyll concentration', output=output_time_step_averaged)
 
    ! Register dependencies
+   call self%register_dependency(self%id_depth,standard_variables%depth)
    call self%register_dependency(self%id_temp,standard_variables%temperature)
    call self%register_dependency(self%id_salt,standard_variables%practical_salinity)
    call self%register_dependency(self%id_E0,type_bulk_standard_variable(name='E0_s')) !scalar PAR energy flux [W/m2]
@@ -669,8 +698,9 @@ end subroutine initialize
    real(rk) :: egesZs,excrZs,etmZs,mortZs,prodZs
    real(rk) :: inZlPs,inZlPl,inZlZs,inZlZl,inZlPZ,inZlD
    real(rk) :: egesZl,excrZl,etmZl,mZlt,mortZl,prodZl
-   real(rk) :: dxxt,dxxdom,slpdom,excrt,excrdom,excrmin,dissO
-   real(rk) :: RainR,om_cal,t,calc,diss
+   real(rk) :: dxxt,dxxdom,slpdom,excrt,excrdom,excrmin
+   real(rk) :: sil_eq,u_opal,ndissO,dissO
+   real(rk) :: calc_Ps,RainR,om_cal,t,calc,diss
    real(rk) :: rhs,rhs_nit,rhs_amm,rhs_pho,rhs_cal,rhs_oxy
 !EOP
 !-----------------------------------------------------------------------
@@ -895,7 +925,11 @@ end subroutine initialize
    _ADD_SOURCE_(self%id_pho, rhs_pho)
 
    ! silicate
-   dissO    = self%dissO * opa
+   sil_eq   = 10._rk**(6.44_rk - 968._rk/(temp + 273.15_rk))              !saturation conc. silicic acid [mmol/m3], Van Cappellen and Qiu (1997a).
+   u_opal   = min(1._rk,max(0._rk,(sil_eq-sil*redf(13)*redf(16))/sil_eq)) !relative degree of undersaturation [-], Van Cappellen and Qiu (1997b), Ridgwell et al. (2002).
+   ndissO   = 0.225_rk * (1._rk + temp/15._rk) * u_opal &                 !normalized dissolution rate [-], Ridgwell et al. (2002) Eqn. 8.
+             + 0.775_rk * (1._rk + temp/400._rk)**37 * u_opal**9.25_rk    !this form with exponents 'multiplied out' is faster (tested).
+   dissO    = self%dissO * ndissO * opa
    _ADD_SOURCE_(self%id_sil, -ProdPl + dissO)
 
    ! opal
@@ -911,16 +945,17 @@ end subroutine initialize
    !factors that reflect the dependency of the calcifying fraction of small phytoplankton 
    !on the environmental conditions. The approach here follows ERSEM (Butenschon et al., 2016).
    t        = max(0._rk,temp)  ! this is to avoid funny values of rain ratio when temp ~ -2 degrees
-   RainR    = RainR * min((1._rk-up_phoPs),up_nPs) * (t/(2._rk+t))
+   calc_Ps  = min((1._rk-up_phoPs),up_nPs) * (t/(2._rk+t)) ! calcifying fraction of Ps
+   RainR    = RainR * calc_Ps
    RainR    = max(RainR,0.005_rk)
    !Next we use the rain ratio to calculate fluxes to the detrital calcite pool
    !arising from particulate fractions of small phytoplankton mortality and grazer ingestion,
    !corrected for dissolution within zooplankton guts or vacuoles. Here we deviate from the
    !ERSEM B16 formulation in favour of the PISCES formulation (Aumont et al., 2015) which corrects
    !for internal dissolution but does not involve grazer inefficiency factors.
-   calc     = ((1._rk-self%frmort1Ps)*mort1Ps + (1._rk-self%frmort2Ps)*mort2Ps) * RainR &
-             + ZsonPs * RainR * (1._rk-self%fdissCZs) &
-             + ZlonPs * RainR * (1._rk-self%fdissCZl)
+   calc     = RainR * (((1._rk-self%frmort1Ps)*mort1Ps + (1._rk-self%frmort2Ps)*mort2Ps) &
+             + ZsonPs * (1._rk-self%fdissCZs) &
+             + ZlonPs * (1._rk-self%fdissCZl))
    !Next we calculate dissolution flux following ERSEM B16, Kier (1980).
    diss     = self%dissCmax * max(1._rk-om_cal,0._rk)**self%ndissC * cal
    rhs_cal  = calc - diss
@@ -961,7 +996,8 @@ end subroutine initialize
    _SET_DIAGNOSTIC_(self%id_NutlimPl, NutlimPl)
    _SET_DIAGNOSTIC_(self%id_c2chl_fla, 1.0_rk/chl2c_fla)
    _SET_DIAGNOSTIC_(self%id_c2chl_dia, 1.0_rk/chl2c_dia)
-
+   _SET_DIAGNOSTIC_(self%id_cocco, calc_Ps*fla) !diagnostic coccolithophore biomass [mgC/m3]
+   _SET_DIAGNOSTIC_(self%id_coccochl, calc_Ps*flachl) !diagnostic coccolithophore chlorophyll [mg/m3]
 
    _LOOP_END_
 
@@ -1107,7 +1143,7 @@ end subroutine initialize
    ! sediment opal (sed2)
    settleO  = RdsO * opa
    resuspO  = Rsd  * sed2
-   dissSEDO = self%dissSEDO * sed2
+   dissSEDO = self%dissSEDO * sed2 !temperature-independent rate preferred for now, see note on update 21/05/2026
    burSEDO  = (self%burialRtO + self%burialRt2O*sed2) * sed2
    _ADD_BOTTOM_FLUX_(self%id_opa, resuspO - settleO)
    _ADD_BOTTOM_FLUX_(self%id_sil, dissSEDO)
@@ -1153,6 +1189,36 @@ end subroutine initialize
    _HORIZONTAL_LOOP_END_
 
    end subroutine do_bottom
+!EOC
+
+!-----------------------------------------------------------------------
+!BOP
+!
+! !IROUTINE: Routine to set sinking speeds for ecosmo particulates
+!
+! !INTERFACE:
+
+   subroutine get_vertical_movement(self,_ARGUMENTS_GET_VERTICAL_MOVEMENT_)
+   class (type_niva_ecosmo),intent(in) :: self
+   _DECLARE_ARGUMENTS_GET_VERTICAL_MOVEMENT_
+
+   real(rk) :: depth, w_det, w_opa, w_cal
+
+   _LOOP_BEGIN_
+   _GET_(self%id_depth,depth)     ! depth of layer midpoints (m)
+
+   depth = abs(depth) ! some host models may report depth as negative
+
+   w_det = self%sinkD + self%cz_sinkD * depth
+   w_opa = self%sinkOPAL + self%cz_sinkOPAL * depth
+   w_cal = self%sinkCAL + self%cz_sinkCAL * depth
+
+   _ADD_VERTICAL_VELOCITY_(self%id_det, -w_det)
+   _ADD_VERTICAL_VELOCITY_(self%id_opa, -w_opa)
+   _ADD_VERTICAL_VELOCITY_(self%id_cal, -w_cal)
+
+   _LOOP_END_
+   end subroutine get_vertical_movement
 !EOC
 
    ! Code for OSAT function was copied from nersem_oxygen.F90 (PJW 02/08/2025).
