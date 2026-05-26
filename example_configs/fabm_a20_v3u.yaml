@@ -150,7 +150,7 @@
 #                 Burial rate parameters for calcite (burialRtC, burialRt2C) follow the previous nersc values that
 #                 were applied uniformly to sedimentary detritus, opal, and calcite.
 #                 -> A20v3s
-# PJW 21/05/2026  1) Increased silicate half saturation constant for Pl (rSiPl: 0.5 -> 2 mmolSi/m3).
+# PJW 21/05/2026  1) Increased silicate half saturation constant for Pl (rSiPl: 0.5 -> 1.0 mmolSi/m3).
 #                 Literature suggests values mostly in ranges 1-3 mmolSi/m3 for Nordic diatoms (Paasche, 1973),
 #                 1-5 mmolSi/m3 for Antarctic diatoms (Nelson and Treguer, 1992), and 1-3 mmolSi/m3 for diatoms
 #                 in the Svalbard region (Krause et al., 2018). Note that although Paasche (1973) does support
@@ -259,7 +259,7 @@ instances:
       rNO3Pl     : 0.50     # NO3 half saturation for Pl      (mmolN/m3),                   default=0.50
       psiPl      : 3.00     # NH4 inhibition for Pl           (m3/mmolN),                   default=3.00
       rPO4Pl     : 0.05     # PO4 half saturation for Pl      (mmolP/m3),                   default=0.05
-      rSiPl      : 2.0      # SiO2 half saturation for Pl     (mmolSi/m3),                  default=0.50, Modified PJW 21/05/2026, see notes.
+      rSiPl      : 1.0      # SiO2 half saturation for Pl     (mmolSi/m3),                  default=0.50, Modified PJW 21/05/2026, see notes.
       minSiPl    : 0.0      # stop Si uptake below this concentration (mmolSi/m3),          default=0.0
       muPl       : 1.98     # max growth rate for Pl          (1/d),                        default=1.30, Modified PJW 13/04/2026, fitted to incubation data, see fit_model_diatom_growth.m. mumax = muP * (alfaP/(alfaP+betaP)) * (betaP/(alfaP+betaP))^(betaP/alfaP) = 1.51 d-1.
       q10Pl      : 2.0      # Q_10 temperature coefficient for Pl  (-),                     default=1.0, Modified PJW 13/04/2026, fixed value, see fit_model_diatom_growth.m.
