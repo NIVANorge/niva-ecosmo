@@ -190,6 +190,14 @@
 !                 Al/Si ratio variations.
 !                 3) Added diagnostic coccolithophore biomass ('cocco') based on rain ratio approach.
 !
+! PJW 09/06/2026: Added PAR attenuation coefficients for individual phytoplankton groups (ExPs, ExPl).
+!                 Chlorophyll-specific absorption is known from experimental measurements to vary strongly between
+!                 phytoplankton groups, with larger cells tending to have lower specific absorption due to
+!                 pigment packaging effects (e.g. Johnsen and Sakshaug, 2007), and this likely explains much
+!                 of the observed decrease in Chl-specific absorption with increasing Chl (Morel, 1988).
+!                 Note that for flexibility we keep the contribution of total chlorophyll via Exphy,
+!                 expecting that this parameter will usually be set to zero when (ExPs, ExPl) are specified.
+!
 !
 !References (short form)
 !
@@ -203,8 +211,10 @@
 ! Feng et al. (2015) (F15), doi:10.1002/2015JG002931
 ! Geider et al. (1997), doi:10.3354/meps148187
 ! Gilstad and Sakshaug (1990), Marine Ecology Progress Series 64: 169-173.
+! Johnsen and Sakshaug (2007), doi:10.1111/j.1529-8817.2007.00422.x
 ! Laws (1991), doi:10.1016/0198-0149(91)90059-O
 ! Middelburg (2019), doi:10.1007/978-3-030-10822-9
+! Morel (1988), doi.org/10.1029/JC093iC09p10749
 ! Moreno et al. (2022), doi:10.1029/2022AV000679
 ! Møller (2007), doi:10.4319/lo.2007.52.1.0079
 ! Neumann (2000), Journal of Marine Systems 25 (2000) 405–419
@@ -264,7 +274,7 @@
       type (type_horizontal_diagnostic_variable_id)    :: id_tbsout
 
 !     Model parameters
-      real(rk) :: Exphy, rtsom_cnp, rtsim_s, rtsim_c_mesozoo
+      real(rk) :: Exphy, ExPs, ExPl, rtsom_cnp, rtsim_s, rtsim_c_mesozoo
       real(rk) :: rNH4Ps, rNO3Ps, psiPs, rPO4Ps
       real(rk) :: muPs, q10Ps, gammaDPs, alfaPs, betaPs, MINchl2cPs, MAXchl2cPs
       real(rk) :: amortPs, m1Ps, m2Ps, frmort1Ps, frmort2Ps
@@ -360,6 +370,8 @@
 
    ! aggregation scale parameters
    call self%get_parameter( self%Exphy,    'Exphy',      'm2/mgCHL',   'phyto extinction',                default=0.04_rk )
+   call self%get_parameter( self%ExPs,     'ExPs',       'm2/mgCHL',   'small phyto extinction',          default=0.0_rk )
+   call self%get_parameter( self%ExPl,     'ExPl',       'm2/mgCHL',   'large phyto extinction',          default=0.0_rk )
    call self%get_parameter( self%rtsom_cnp,'rtsom_cnp',  '-',          'ratio of total suspended organic mass (dry) to total CNP mass', default=1.5547_rk)
    call self%get_parameter( self%rtsim_s,  'rtsim_s',    '-',          'ratio of total suspended inorganic mass (dry) to total silicon mass', default=2.4596_rk)
    call self%get_parameter( self%rtsim_c_mesozoo,'rtsim_c_mesozoo','-','ratio of total suspended inorganic mass (dry) to total carbon mass in mesozooplankton', default=0.1583_rk)
@@ -595,11 +607,16 @@
    end if
 
    ! Register contributions to aggregate variables
-   ! light attenuation due to chlorophyll:
+   ! light attenuation due to total chlorophyll:
    call self%add_to_aggregate_variable(standard_variables%attenuation_coefficient_of_photosynthetic_radiative_flux, &
          self%id_flachl,scale_factor=self%Exphy,include_background=.true.)
    call self%add_to_aggregate_variable(standard_variables%attenuation_coefficient_of_photosynthetic_radiative_flux, &
          self%id_diachl,scale_factor=self%Exphy,include_background=.true.)
+   ! light attenuation due to small/large phytoplankton chlorophyll (group-specific):
+   call self%add_to_aggregate_variable(standard_variables%attenuation_coefficient_of_photosynthetic_radiative_flux, &
+         self%id_flachl,scale_factor=self%ExPs,include_background=.true.)
+   call self%add_to_aggregate_variable(standard_variables%attenuation_coefficient_of_photosynthetic_radiative_flux, &
+         self%id_diachl,scale_factor=self%ExPl,include_background=.true.)
    ! total chlorophyll:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='Chl_s',units='mg/m^3',aggregate_variable=.true.), &
          self%id_flachl,include_background=.true.)
