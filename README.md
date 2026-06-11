@@ -1,5 +1,5 @@
 This is a FABM-based adaptation of the ECOSMO marine biogeochemical model, originally developed for the Baltic/North Sea (Neumann, 2000; Daewel and Schrum 2013),
-and later adapted by NERSC for applications to the Nordic Seas and Arctic Ocean (Yumruktepe et al., 2022), and including use within the TOPAZ-ECOSMO operational CMEMS product.
+and later adapted by NERSC for applications to the Nordic Seas and Arctic Ocean (Yumruktepe et al., 2022), and used within the TOPAZ-ECOSMO operational CMEMS product.
 
 The development of the niva-ecosmo code was originally funded by the Horizon Europe project EU-INTERCHANGE as part of an effort to develop efficient and well-performing
 biogeochemical components of high-resolution digital twins for the Atlantic/Arctic (within NorHAPS model) and the Norwegian coastal region (Norkyst model).
