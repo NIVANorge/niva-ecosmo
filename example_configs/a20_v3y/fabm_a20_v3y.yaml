@@ -1,8 +1,8 @@
-# fabm_a20_v3w.yaml
+# fabm_a20_v3y.yaml
 #
-# Adaptation of ECOSMO model for northern latitudes (A20 pan-Arctic domain >~50N), version 3w.
+# Adaptation of ECOSMO model for northern latitudes (A20 pan-Arctic domain >~50N), version 3y.
 #
-# Phil Wallhead (PJW), NIVA Bergen, 31/05/2026
+# Phil Wallhead (PJW), NIVA Bergen, 10/07/2026
 #
 #
 # Change history
@@ -229,16 +229,48 @@
 #                 where the Z5 group is a generalist with stronger preference for Pl and Zs prey (inc. group-level cannibalism):
 #                 prefZsPl: 0.35 - > 0.50; prefZsZs: 0.20 - > 0.50; prefZsD: 0.12 - > 0.25;
 #                 -> A20v3w
-#
+# PJW 09/06/2026  The apparent defecit of DIC drawdown at IRM station in the v3w simulation raised questions regarding
+#                 parameter Exphy for the chlorophyll-specific diffuse attenuation of PAR (could be too high).
+#                 Reviewing the literature suggested that this 'parameter' was strongly correlated to total chlorophyll
+#                 (Morel, 1988), most likely due to the variations in phytoplankton community structure and pigment
+#                 packaging effects, whereby larger cells/chloroplasts have lower specific attenuation. We therefore
+#                 try using group-specific attenuation coefficients (ExPs=0.03, ExPl=0.015) m2/mgChl based on NERSEM
+#                 estimates in turn derived from Johnsen and Sakshaug (2007) experimental data, approximating Kd as
+#                 absorption, and KdPAR ~ Kd490 (Morel et al., 2007; Wang et al., 2009; Zapata-Hinestroza et al., 2025).
+#                 Furthermore, to avoid excessive silicate drawdown with the increased diatom productivity (and in light
+#                 of initial simulation results at IRM), we increase the half-saturation constant rSiPl: 1 -> 2 mmolSi/m3,
+#                 which is still close to the middle of the ranges of experimental and model values (see above):
+#                 -> A20v3x
+# PJW 10/07/2026  The modifications for v3x succeeding in producing more realistic nutrient drawdown levels, but the
+#                 overall simulation quality was not improved, likely due to limitations in the physics (upper layer mixing)
+#                 that are partly compensated by the less-realistic representation of light extinction in v3w.
+#                 We therefore revert the changes v3w->v3x for now, noting that they should be considered again
+#                 in future models with different physics.
+#                 The v3w configuration is modified to include:
+#                 1) Losses to coupled nitrification-denitrification in oxic sediments amounting to 50% of the total
+#                 remineralization flux (new parameter gammaND = 0.5), following (Neumann, 2000; Stigebrandt and Wulff, 1987; Balzer 1984)
+#                 assumption which seems to be independently validated by (Kemp et al., 1990; Bohlen et al., 2012).
+#                 We adopt the nersc parameterization of the O2-dependence of this loss flux (KO2nitrifSED = 4.5 mmolO2/m3).
+#                 2) Bug fix in niva_ecosmo.F90 (10/07/2026), though this only affects conditions with bottom O2<=0 and should
+#                 therefore have little impact on the A20 simulation.
+#                 3) Added PAR-dependence of nitrification in the water column, using a 2-parameter function based on
+#                 (A15, Shiozaki et al., 2019) (see fit_Shiozaki_nitrification_data.m).
+#                 Note that the fitted half-inhibition value of 7 W/m2 seems to be a quite conservative estimate of PAR
+#                 sensitivity compared to the value 1 W/m2 used in A15, and Copilot-based estimates.
+#                 Note that ERSEM B16 does not include PAR-sensitivity of nitrification, but rather a nonlinear dependence on
+#                 NH4 concentration that likely has a similar effect (to switch off nitrification in surface layers in summer).
+#                 -> A20v3y
 #
 #
 #References (short form)
 #
 # Aksnes et al. (1997), doi:10.1080/00364827.1997.10413647
 # Aumont et al. (2015) (A15), doi:10.5194/gmd-8-2465-2015
+# Balzer (1984),  doi:10.4319/lo.1984.29.6.1231
 # Bandara et al. (2018), doi:10.1016/j.ecolmodel.2017.12.010
 # Berelson (2002), doi:10.1016/S0967-0645(01)00102-3
 # Blackford et al. (2004), doi:10.1016/j.jmarsys.2004.02.004
+# Bohlen et al. (2012), doi:10.1029/2011GB004198
 # Burris (1981), doi.org/10.1007/bf00397114
 # Butenschon et al. (2016) (B16), doi:10.5194/gmd-9-1293-2016
 # Campbell et al. (2001), doi:10.3354/meps221161
@@ -250,10 +282,13 @@
 # Gehlen et al. (2007), doi:10.5194/bg-4-505-2007
 # Hansen et al. (1997), doi:10.4319/lo.1997.42.4.0687
 # Huse et al. (2018), doi:10.3389/fevo.2018.00023
+# Johnsen and Sakshaug (2007), doi:10.1111/j.1529-8817.2007.00422.x
+# Kemp et al. (1990), doi:10.4319/lo.1990.35.7.1545
 # Kiørboe et al. (1985) (K85), doi:10.3389/fmars.2023.1134792
 # Krause et al. (2018), doi:10.5194/bg-15-6503-2018
 # Laws (1991), doi:10.1016/0198-0149(91)90059-O
 # Mayor et al. (2006), doi:10.1093/plankt/fbl047
+# Morel et al. (2007), doi:10.1016/j.rse.2007.03.012
 # Moreno et al. (2022), doi:10.1029/2022AV000679
 # Møller (2007), doi:10.4319/lo.2007.52.1.0079
 # Nelson and Treguer (1992), doi:10.3354/meps080255
@@ -263,13 +298,16 @@
 # Ridgwell et al. (2002), doi:10.1029/2002GB001877
 # Sanz-Martin et al. (2019), doi:10.3389/fmars.2019.00468
 # Sarmiento and Gruber (2006), doi:10.1017/S0016756807003755
+# Shiozaki et al. (2019), doi:10.1029/2018GB006068
 # Steinberg and Landry (2017), doi:10.1146/annurev-marine-010814-015924
 # Stephens et al. (2025), doi.org/10.1038/s42003-025-07574-2
 # Tanioka and Matsumoto (2020), doi:10.1029/2019GL085564
+# Wang et al. (2009), doi:10.1029/2009JC005286
 # White et al. (2018), doi:10.1038/s41598-018-28073-x
 # Van Cappellen et al. (2002), doi:10.1029/2001GB001431
 # Villa-Alfageme et al. (2016), doi:10.1002/2016GL069233
 # Yool et al. (2013) (Y13), doi:10.5194/gmd-6-1767-2013
+# Zapata-Hinestroza et al. (2025), doi:10.3390/rs17243990
 
 instances:
 
@@ -385,6 +423,8 @@ instances:
       nitrifmax  : 0.1      # max nitrification rate          (1/d),                        default=0.1
       aTnitrif   : 0.11     # temp. control nitrification     (1/degC),                     default=0.11
       KO2nitrif  : 0.45     # O2 half saturation for nitrification (mmolO2/m3),             default=0.45
+      aE0nitrif  : 0.088    # PAR control nitrification       ((W/m2)^-bE0nitrif),          default=0.0, Modified PJW 10/07/20226
+      bE0nitrif  : 1.22     # PAR exponent nitrification      (-),                          default=1.0, Modified PJW 10/07/20226
       reminD     : 0.006    # detritus remineralization rate  (1/d),                        default=0.003, Modified PJW 21/05/2026
       dissO      : 0.019    # opal dissolution rate (0 degC, sil=0) (1/d),                  default=0.015
 
@@ -408,6 +448,8 @@ instances:
       burialRt2  : 1e-7     # quadratic detritus burial parameter (m2/(mg C day),           default=0.0
       reminSED   : 0.002    # sediment remineralization rate  (1/d),                        default=0.002
       aTreminSED : 0.15     # temp. control remineralization  (1/degC),                     default=0.15
+      gammaND    : 0.5      # fraction of oxic remineralization lost to coupled nitrification-denitrification (-), default=0.5
+      KO2nitrifSED: 4.5     # O2 half saturation for nitrification in sediments (mmolO2/m3),default=4.5
       dissSEDO   : 0.0005   # sed. opal dissolution rate      (1/d),                        default=0.0002, Modified PJW 21/05/2026
       burialRtO  : 0.0      # linear opal burial rate         (1/d),                        default=0.00001
       burialRt2O : 1e-7     # quadratic opal burial parameter (m2/(mg C day),               default=0.0

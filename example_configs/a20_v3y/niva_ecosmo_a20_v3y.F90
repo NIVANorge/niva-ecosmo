@@ -124,11 +124,9 @@
 !                           This means that any fabm.yaml files where reminSED is specified should used double
 !                           the value in application to the present code.
 !                 9c) Removed term for bottom water oxygen consumption due to nitrification (2.0_rk*BioOM1*Rsa*sed1).
-!                     We believe this was an erroneous term in Daewel and Schrum (2013), because ammonium in the
-!                     sediments is not represented --- rather the remineralization flux is routed to ammonium
-!                     in the bottom water, which means that this term will double-count the oxygen consumption
-!                     due to nitrification of sediment-derived ammonium. Also it is not clear why this process
-!                     should scale with (half of) the sedimentary remineralization flux (Rsa*sed1). 
+!                     This term was associated with an assumed loss due of 50% of the remineralization flux to
+!                     a coupled process of nitrification in oxic sediments followed by denitrification in the
+!                     deeper hypoxic/anoxic sediments (Neumann, 2000; Stigebrandt and Wulff, 1987).
 !                     NOTE! Absence of this term in the new code means that the new code cannot exactly
 !                           reproduce legacy simulation results. 
 !                 9d) Burial fluxes are elaborated to include quadratic terms and distinguish organic matter vs. opal.
@@ -198,13 +196,28 @@
 !                 Note that for flexibility we keep the contribution of total chlorophyll via Exphy,
 !                 expecting that this parameter will usually be set to zero when (ExPs, ExPl) are specified.
 !
+! PJW 10/07/2026: 1) Reinstated the assumed loss to coupled nitrification-denitrification in oxic sediments
+!                 (Neumann, 2000; Stigebrandt and Wulff, 1987), but introducing a new adjustable parameter
+!                 gammaND representing the fraction of the total remineralization flux that is lost, with default
+!                 value of 0.5 (independent estimates based on Bohlen et al. (2012) and Kemp et al. (1990) appear to
+!                 support the original 50% assumption, derived in part from the experimental observations (Balzer, 1984)).
+!                 The loss flux is assumed to depend on bottom water oxygen level due to the nitrification step,
+!                 with dependence parameterized using a new half saturation parameter KO2nitrifSED, with default
+!                 value 4.5 mmolO2/m3 following the NERSC code. However, unlike in the NERSC code and DS13, we
+!                 avoid multiplying by a maximum nitrification rate which may imply dimensions [time]^-2.
+!                 2) FIXED BUG: f_O2pos was not switching to zero with bottom O2 <= 0 in do_bottom.
+!                 3) Added PAR-dependence of pelagic nitrification following (A15; Shiozaki et al., 2019).
+!                 4) Added variable E0c to avoid repeated use of max(0._rk,E0)
+!
 !
 !References (short form)
 !
 ! Aksnes et al. (1997), doi:10.1080/00364827.1997.10413647
 ! Aumont et al. (2015) (A15), doi:10.5194/gmd-8-2465-2015
+! Balzer (1984),  doi:10.4319/lo.1984.29.6.1231
 ! Bianchi et al. (2012), doi:10.1029/2011GB004209
 ! Blackford et al. (2004), doi:10.1016/j.jmarsys.2004.02.004
+! Bohlen et al. (2012), doi:10.1029/2011GB004198
 ! Burris (1981), doi.org/10.1007/bf00397114
 ! Butenschon et al. (2016) (B16), doi:10.5194/gmd-9-1293-2016
 ! Daewel and Schrum (2013) (D13), doi:10.1016/j.jmarsys.2013.03.008
@@ -212,6 +225,7 @@
 ! Geider et al. (1997), doi:10.3354/meps148187
 ! Gilstad and Sakshaug (1990), Marine Ecology Progress Series 64: 169-173.
 ! Johnsen and Sakshaug (2007), doi:10.1111/j.1529-8817.2007.00422.x
+! Kemp et al. (1990), doi:10.4319/lo.1990.35.7.1545
 ! Laws (1991), doi:10.1016/0198-0149(91)90059-O
 ! Middelburg (2019), doi:10.1007/978-3-030-10822-9
 ! Morel (1988), doi.org/10.1029/JC093iC09p10749
@@ -223,6 +237,7 @@
 ! Ridgwell et al. (2002), doi:10.1029/2002GB001877
 ! Sanz-Martin et al. (2019), doi:10.3389/fmars.2019.00468
 ! Sarmiento and Gruber (2006), doi:10.1017/S0016756807003755
+! Shiozaki et al. (2019), doi:10.1029/2018GB006068
 ! Steinberg and Landry (2017), doi:10.1146/annurev-marine-010814-015924
 ! Stephens et al. (2025), doi.org/10.1038/s42003-025-07574-2
 ! Stigebrandt and Wulff (1987), doi:10.1357/002224087788326812
@@ -291,10 +306,12 @@
       real(rk) :: gammaZlP, gammaZlD, fregesZl, excZl, fAexcZl, fexcdomZl
       real(rk) :: mZl, mvZl, KE0mvZl, q10mZl, frmortZl
       real(rk) :: eta_PQ, eta_O2resp, eta_denit, eta_SO4resp, eta_nitrif
-      real(rk) :: nitrifmax, aTnitrif, KO2nitrif, reminD, dissO
+      real(rk) :: nitrifmax, aTnitrif, KO2nitrif, aE0nitrif, bE0nitrif
+      real(rk) :: reminD, dissO
       real(rk) :: Rain0, Kcalom, fdissCZs, fdissCZl, dissCmax, ndissC
       real(rk) :: sinkD, sinkOPAL, sinkCAL, cz_sinkD, cz_sinkOPAL, cz_sinkCAL
       real(rk) :: crBotStr, resuspRt, burialRt, burialRt2, reminSED, aTreminSED
+      real(rk) :: gammaND, KO2nitrifSED
       real(rk) :: dissSEDO, burialRtO, burialRt2O
       real(rk) :: dissSEDCmax, dissSEDCmin, ndissSEDC, burialRtC, burialRt2C
       real(rk) :: releaseP, aTreleaseP, RelSEDp1, RelSEDp2
@@ -476,6 +493,8 @@
    call self%get_parameter( self%nitrifmax,'nitrifmax',  '1/day',      'maximum nitrification rate',      default=0.1_rk,   scale_factor=1.0_rk/sedy0) !Default follows Stigebrandt and Wulff (1987).
    call self%get_parameter( self%aTnitrif,'aTnitrif',    '1/degC',     'temp. control nitrification',     default=0.11_rk) !Default follows Stigebrandt and Wulff (1987).
    call self%get_parameter( self%KO2nitrif,'KO2nitrif',  'mmolO2/m3',  'O2 half saturation for nitrification', default=0.45_rk) !Default from 0.01*44.6608009, with 0.01 from Stigebrandt and Wulff (1987).
+   call self%get_parameter( self%aE0nitrif,'aE0nitrif',  '(W/m2)^-bE0nitrif','PAR control nitrification', default=0.0_rk) !Default value 0 switches off PAR sensitivity.
+   call self%get_parameter( self%bE0nitrif,'bE0nitrif',  '-',          'PAR exponent nitrification',      default=1.0_rk)
    call self%get_parameter( self%reminD,  'reminD',      '1/day',      'detritus remin. rate',            default=0.003_rk, scale_factor=1.0_rk/sedy0)
    call self%get_parameter( self%dissO,   'dissO',       '1/day',      'opal dissolution rate (0 degC, sil=0)', default=0.015_rk, scale_factor=1.0_rk/sedy0)
 
@@ -502,6 +521,8 @@
    call self%get_parameter( self%burialRt2,'burialRt2',  'm2/(mgC day)','quadratic detritus burial parameter', default=0.0_rk, scale_factor=1.0_rk/sedy0)
    call self%get_parameter( self%reminSED,'reminSED',    '1/day',      'remineralization rate',           default=0.002_rk, scale_factor=1.0_rk/sedy0)
    call self%get_parameter( self%aTreminSED,'aTreminSED','1/degC',     'temp. control remineralization',  default=0.15_rk)
+   call self%get_parameter( self%gammaND,'gammaND',      '-',          'fraction of oxic remineralization lost to coupled nitrification-denitrification', default=0.5_rk)
+   call self%get_parameter( self%KO2nitrifSED,'KO2nitrifSED','mmolO2/m3','O2 half saturation for nitrification in sediments', default=4.5_rk) !Default from 0.1*44.6608009, with 0.1 from NERSC code.
    call self%get_parameter( self%dissSEDO,'dissSEDO',    '1/day',      'sed. opal dissolution rate',      default=0.0002_rk,scale_factor=1.0_rk/sedy0)
    call self%get_parameter( self%burialRtO,'burialRtO',  '1/day',      'linear opal burial rate',         default=1e-5_rk,  scale_factor=1.0_rk/sedy0)
    call self%get_parameter( self%burialRt2O,'burialRt2O','m2/(mgC day)','quadratic opal burial parameter', default=0.0_rk,  scale_factor=1.0_rk/sedy0)
@@ -702,7 +723,7 @@ end subroutine initialize
    real(rk) :: no3,nh4,pho,sil,t_silPl,oxy,fla,dia
    real(rk) :: flachl,diachl,chl2c_fla,chl2c_dia
    real(rk) :: microzoo,mesozoo,opa,cal,det,dom
-   real(rk) :: temp,salt,D,E0
+   real(rk) :: temp,salt,D,E0,E0c
    real(rk) :: frem,remdet,fremDOM,remdom,remtot,denit,nitrif
    real(rk) :: up_no3Ps,up_nh4Ps,up_nPs,up_phoPs,NutlimPs
    real(rk) :: up_no3Pl,up_nh4Pl,up_nPl,up_phoPl,up_silPl,NutlimPl
@@ -730,6 +751,7 @@ end subroutine initialize
    _GET_(self%id_salt,salt)
    _GET_HORIZONTAL_(self%id_day_length,D)
    _GET_(self%id_E0,E0) !scalar PAR energy flux [W/m2]
+   E0c = max(0._rk,E0)
    _GET_(self%id_no3,no3)
    _GET_(self%id_nh4,nh4)
    _GET_(self%id_pho,pho)
@@ -892,7 +914,7 @@ end subroutine initialize
              + self%fAexcZl*(self%gammaZlP*inZlPZ &                 !activity excretion/respiration as fraction of absorbed
              +               self%gammaZlD*inZlD)                   ! -> DOM,DIC/NUT
    etmZl    = self%q10mZl**((temp-10._rk)/10._rk)
-   mZlt     = self%mZl + self%mvZl*E0/(self%KE0mvZl+E0)             !total mortality rate inc. visual predation
+   mZlt     = self%mZl + self%mvZl*E0c/(self%KE0mvZl+E0c)           !total mortality rate inc. visual predation
    mortZl   = mZlt*etmZl*mes_loss * mesozoo
    prodZl   = inZlPZ + inZlD - egesZl                               !contribution to 'secondary production'
    _ADD_SOURCE_(self%id_mesozoo, prodZl - excrZl - mortZl - ZlonZl)
@@ -918,7 +940,9 @@ end subroutine initialize
    _ADD_SOURCE_(self%id_dom, dxxdom + slpdom + excrdom - remdom)
 
    ! nitrate
-   nitrif   = f_O2pos * self%nitrifmax * exp(self%aTnitrif*temp) * oxy/(self%KO2nitrif+oxy) * nh4 !nitrification
+   nitrif   = nh4 * self%nitrifmax * exp(self%aTnitrif*temp) &       !nitrification: T-dependence
+                  * f_O2pos * oxy/(self%KO2nitrif+oxy) &             !O2-dependence
+                  * 1._rk/(1._rk+self%aE0nitrif*E0c**self%bE0nitrif) !PAR-dependence (A15, Shiozaki et al., 2019)
    remtot   = remdet + remdom
    denit    = f_denit * self%eta_denit * remtot
    rhs_nit  = -(up_no3Ps+0.5d-10)/(up_nPs+1.0d-10)*ProdPs &
@@ -992,7 +1016,7 @@ end subroutine initialize
 
      rhs    = redf(16)*((rhs_amm-rhs_nit)*redf(11) &               !\Delta[TA] = + \Delta[NH4] - \Delta[NO3]
              - rhs_pho*redf(12) &                                  !             - \Delta[PO4]
-             - 2.0_rk * rhs_cal) &                                 !             - 2*\Delta[CaCO3]
+             - 2.0_rk * rhs_cal) &                                 !             + 2*\Delta[CO3]
              - 0.5_rk * rhs_oxy * (1._rk-f_O2pos)                  !             + \Delta[H2S]   (O2<=0)
      ! The last term here accounts for alkalinity changes due to release/consumption
      ! of H2S, which correspond to -1/2 * oxygen changes on molar basis when oxygen is negative.
@@ -1089,7 +1113,7 @@ end subroutine initialize
    real(rk) :: temp, oxy, no3, det, opa, cal, sed1, sed2, sed3, sed4
    real(rk) :: tbs, om_cal
    real(rk) :: Rds, RdsO, RdsC, Rsd
-   real(rk) :: settle, resusp, remSED, burSED, denitSED
+   real(rk) :: settle, resusp, remSED, burSED, denitSED, lossND
    real(rk) :: yt1, yt2, releaseP
    real(rk) :: rhs, flux, flux_oxy
    real(rk) :: f_O2pos, f_O2resp, f_denit, f_SO4resp
@@ -1124,7 +1148,7 @@ end subroutine initialize
    f_denit   = 0.0_rk
    f_SO4resp = 0.0_rk
    if (oxy.le.0.0_rk) then
-     f_O2pos   = 1.0_rk
+     f_O2pos   = 0.0_rk
      f_O2resp  = 0.0_rk
      if (no3.gt.0.0_rk) then
        f_denit   = 1.0_rk
@@ -1152,9 +1176,10 @@ end subroutine initialize
    remSED   = self%reminSED * exp(self%aTreminSED*temp) * sed1
    burSED   = (self%burialRt + self%burialRt2*sed1) * sed1
    denitSED = f_denit * self%eta_denit * remSED
+   lossND   = f_O2pos * oxy/(self%KO2nitrifSED+oxy) * self%gammaND * remSED !loss to coupled nitrification-denitrification in oxic sediments
    _ADD_BOTTOM_FLUX_(self%id_det, resusp - settle)
    _ADD_BOTTOM_FLUX_(self%id_no3, -denitSED)
-   _ADD_BOTTOM_FLUX_(self%id_nh4, remSED)
+   _ADD_BOTTOM_FLUX_(self%id_nh4, remSED - lossND)
    _ADD_BOTTOM_SOURCE_(self%id_sed1, settle - resusp - remSED - burSED)
 
    ! sediment opal (sed2)
@@ -1184,17 +1209,18 @@ end subroutine initialize
    _ADD_BOTTOM_SOURCE_(self%id_sed4, settleC - resuspC - dissSEDC - burSEDC)
 
    ! bottom oxygen
-   flux_oxy = -(f_O2resp*self%eta_O2resp  + f_SO4resp*self%eta_SO4resp) * remSED * redf(16)
+   flux_oxy = -((f_O2resp*self%eta_O2resp  + f_SO4resp*self%eta_SO4resp) * remSED &
+              - redf(11)*self%eta_nitrif * lossND) * redf(16)
    _ADD_BOTTOM_FLUX_(self%id_oxy, flux_oxy)
 
    ! bottom carbonate dynamics
    if (self%couple_co2) then
      _ADD_BOTTOM_FLUX_(self%id_dic, redf(16)*(remSED + dissSEDC))
 
-     flux   = redf(16)*((remSED+denitSED)*redf(11) &      !\Delta[TA] = + \Delta[NH4] - \Delta[NO3]
-             - releaseP*redf(12) &                        !             - \Delta[PO4]
-             + 2.0_rk * dissSEDC) &                       !             - 2*\Delta[CaCO3]
-             - 0.5_rk * flux_oxy * (1._rk-f_O2pos)        !             + \Delta[H2S]   (O2<=0)
+     flux   = redf(16)*((remSED-lossND + denitSED)*redf(11) &  !\Delta[TA] = + \Delta[NH4] - \Delta[NO3]
+             - releaseP*redf(12) &                             !             - \Delta[PO4]
+             + 2.0_rk * dissSEDC) &                            !             + 2*\Delta[CO3]
+             - 0.5_rk * flux_oxy * (1._rk-f_O2pos)             !             + \Delta[H2S]   (O2<=0)
      ! The last term here accounts for alkalinity changes due to release/consumption
      ! of H2S, which correspond to -1/2 * oxygen changes on molar basis when oxygen is negative.
      ! \Delta[TA] = \Delta[H2S] = -1/2 * \Delta[O2]         (O2<0)
