@@ -6,9 +6,9 @@ biogeochemical components of high-resolution digital twins for the Atlantic/Arct
 
 The current niva-ecosmo version was based on the version of the NERSC operational code within the FABM during August 2025.
 It has since diverged from the NERSC code in terms of formulation details and coding style. 
-All these changes are documented and explained within dated comments at the top of the files concerned (not hidden somewhere on github).
+All these changes are documented and explained within dated comments at the top of the files concerned.
 
-The code herein is intended to provide a "lean", computationally-efficient but well-performing biogeochemical module of medium complexity, that can be suitable
+The code herein is intended to provide a "lean", computationally-efficient biogeochemical module of medium complexity, that can be suitable
 for incorporation into high-resolution, 3D, coupled physical-biogeochemical models.
 A key metric of efficient is the Run Time Ratio (RTR) between coupled physical-biogeochemical and physics-only simulations.
 We aim for a target RTR value less than 3 such that long (e.g. decadal) simulations over large domains and at high-resolution
