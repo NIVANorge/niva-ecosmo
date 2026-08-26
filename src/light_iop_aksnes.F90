@@ -95,7 +95,7 @@ contains
       !Broadband attenuation model parameters
       call self%get_parameter(self%kb0,'kb0','1/m (1/m)^(-kb1)','power-law scale parameter relating Ko(blue) to Kd(440) at zero (Chla, depth)',default=0.52_rk) !see fit_light_iop_aknes_to_ecolight.m
       call self%get_parameter(self%kb1,'kb1','-','power-law exponent relating Ko(blue) to Kd(440)',default=0.67_rk) !see fit_light_iop_aknes_to_ecolight.m
-      call self%get_parameter(self%kb1,'kb2','-','power-law exponent relating Ko(blue) to (1+Chla)',default=0.14_rk) !see fit_light_iop_aknes_to_ecolight.m
+      call self%get_parameter(self%kb2,'kb2','-','power-law exponent relating Ko(blue) to (1+Chla)',default=0.14_rk) !see fit_light_iop_aknes_to_ecolight.m
       call self%get_parameter(self%kb3,'kb3','-','power-law exponent relating Ko(blue) to (1+depth)',default=-0.083_rk) !see fit_light_iop_aknes_to_ecolight.m
       call self%get_parameter(self%kr0,'kr0','1/m','red PAR attenuation due to water',default=0.225_rk) !Foujols et al. (2000), Manizza et al. (2005)
       call self%get_parameter(self%kr1,'kr1','1/m (mg Chla/m3)^(-kr2)','power-law scale parameter relating Ko(red) to Chla',default=0.037_rk) !Foujols et al. (2000), Manizza et al. (2005)
