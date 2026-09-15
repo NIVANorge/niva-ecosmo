@@ -209,6 +209,13 @@
 !                 3) Added PAR-dependence of pelagic nitrification following (A15; Shiozaki et al., 2019).
 !                 4) Added variable E0c to avoid repeated use of max(0._rk,E0)
 !
+! PJW 28/08/2026: Replaced the Wroblewski-Fasham formulation for NH4 inhibition of NO3 uptake with substrate-based
+!                 parameterization of PISCES, ERSEM (A15, B16), removing parameters (psiPs, psiPl).
+!                 The Wroblewski-Fasham formulation exhibits unrealistic decreases in the net N-limitation function with
+!                 increasing NH4 for some parameter values (Vallino and Le Quere, 2008). The PISCES/ERSEM
+!                 formulation avoids this, and also maintains net limitation function <=1 (conceptually easier), avoids use
+!                 of the exponential function (reducing computational cost), and reduces the number of adjustable parameters.
+!
 !
 !References (short form)
 !
@@ -242,6 +249,7 @@
 ! Stephens et al. (2025), doi.org/10.1038/s42003-025-07574-2
 ! Stigebrandt and Wulff (1987), doi:10.1357/002224087788326812
 ! Tanioka and Matsumoto (2020), doi:10.1029/2019GL085564
+! Vallina and Le Quere (2008), doi:10.1016/j.ecolmodel.2008.06.038
 ! Van Cappellen and Qiu (1997a), doi:10.1016/S0967-0645(96)00113-0
 ! Van Cappellen and Qiu (1997b), doi:10.1016/S0967-0645(96)001129
 ! Van Cappellen et al. (2002), doi:10.1029/2001GB001431
@@ -290,10 +298,10 @@
 
 !     Model parameters
       real(rk) :: Exphy, ExPs, ExPl, rtsom_cnp, rtsim_s, rtsim_c_mesozoo
-      real(rk) :: rNH4Ps, rNO3Ps, psiPs, rPO4Ps
+      real(rk) :: rNH4Ps, rNO3Ps, rPO4Ps
       real(rk) :: muPs, q10Ps, gammaDPs, alfaPs, betaPs, MINchl2cPs, MAXchl2cPs
       real(rk) :: amortPs, m1Ps, m2Ps, frmort1Ps, frmort2Ps
-      real(rk) :: rNH4Pl, rNO3Pl, psiPl, rPO4Pl, rSiPl, minSiPl
+      real(rk) :: rNH4Pl, rNO3Pl, rPO4Pl, rSiPl, minSiPl
       real(rk) :: muPl, q10Pl, gammaDPl, alfaPl, betaPl, MINchl2cPl, MAXchl2cPl
       real(rk) :: amortPl, m1Pl, m2Pl, frmort1Pl, frmort2Pl
       real(rk) :: GrZsPs, GrZsPl, GrZsZs, GrZsD
@@ -396,7 +404,6 @@
    ! small phytoplankton parameters
    call self%get_parameter( self%rNH4Ps,  'rNH4Ps',      'mmolN/m3',   'NH4 half saturation for Ps',      default=0.20_rk,  scale_factor=redf(1)*redf(6))
    call self%get_parameter( self%rNO3Ps,  'rNO3Ps',      'mmolN/m3',   'NO3 half saturation for Ps',      default=0.50_rk,  scale_factor=redf(1)*redf(6))
-   call self%get_parameter( self%psiPs,   'psiPs',       'm3/mmolN',   'NH4 inhibition for Ps',           default=3.0_rk,   scale_factor=1.0_rk/(redf(1)*redf(6)))
    call self%get_parameter( self%rPO4Ps,  'rPO4Ps',      'mmolP/m3',   'PO4 half saturation for Ps',      default=0.05_rk,  scale_factor=redf(2)*redf(6))
    call self%get_parameter( self%muPs,    'muPs',        '1/day',      'max growth rate for Ps',          default=1.10_rk,  scale_factor=1.0_rk/sedy0) !Note: realized maximum growth rate at (T=10degC, D=0.5) mumax = muP * (alfaP/(alfaP+betaP)) * (betaP/(alfaP+betaP))^(betaP/alfaP)
    call self%get_parameter( self%q10Ps,   'q10Ps',       '-',          'Q_10 temperature coefficient for Ps', default=1.0_rk)
@@ -414,7 +421,6 @@
    ! large phytoplankton parameters
    call self%get_parameter( self%rNH4Pl,  'rNH4Pl',      'mmolN/m3',   'NH4 half saturation for Pl',      default=0.20_rk,  scale_factor=redf(1)*redf(6))
    call self%get_parameter( self%rNO3Pl,  'rNO3Pl',      'mmolN/m3',   'NO3 half saturation for Pl',      default=0.50_rk,  scale_factor=redf(1)*redf(6))
-   call self%get_parameter( self%psiPl,   'psiPl',       'm3/mmolN',   'NH4 inhibition for Pl',           default=3.0_rk,   scale_factor=1.0_rk/(redf(1)*redf(6)))
    call self%get_parameter( self%rPO4Pl,  'rPO4Pl',      'mmolP/m3',   'PO4 half saturation for Pl',      default=0.05_rk,  scale_factor=redf(2)*redf(6))
    call self%get_parameter( self%rSiPl,   'rSiPl',       'mmolSi/m3',  'SiO2 half saturation for Pl',     default=0.50_rk,  scale_factor=redf(3)*redf(6))
    call self%get_parameter( self%minSiPl, 'minSiPl',     'mmolSi/m3',  'stop Si uptake below this concentration', default=1.0_rk, scale_factor=redf(3)*redf(6))
@@ -725,8 +731,8 @@ end subroutine initialize
    real(rk) :: microzoo,mesozoo,opa,cal,det,dom
    real(rk) :: temp,salt,D,E0,E0c
    real(rk) :: frem,remdet,fremDOM,remdom,remtot,denit,nitrif
-   real(rk) :: up_no3Ps,up_nh4Ps,up_nPs,up_phoPs,NutlimPs
-   real(rk) :: up_no3Pl,up_nh4Pl,up_nPl,up_phoPl,up_silPl,NutlimPl
+   real(rk) :: up_ndrPs,up_no3Ps,up_nh4Ps,up_nPs,up_phoPs,NutlimPs
+   real(rk) :: up_ndrPl,up_no3Pl,up_nh4Pl,up_nPl,up_phoPl,up_silPl,NutlimPl
    real(rk) :: muPsc,muPlc,ChlCPs,ChlCPl,ProdPs,ProdPl,Prod
    real(rk) :: NutfacmPs,NutfacmPl
    real(rk) :: mort1Ps,mort1Pl,mort2Ps,mort2Pl,mortPs,mortPl
@@ -783,10 +789,12 @@ end subroutine initialize
    mes_loss = max(sign(-1.0_rk,mesozoo-0.01_rk),0.0_rk)  ! mesozooplankton
 
    ! nutrient limitation factors
-   up_nh4Ps = nh4/(self%rNH4Ps+nh4)
-   up_nh4Pl = nh4/(self%rNH4Pl+nh4)
-   up_no3Ps = no3/(self%rNO3Ps+no3)*exp(-self%psiPs*nh4)
-   up_no3Pl = no3/(self%rNO3Pl+no3)*exp(-self%psiPl*nh4)
+   up_ndrPs = self%rNO3Ps*self%rNH4Ps + self%rNH4Ps*no3 + self%rNO3Ps*nh4 ! denominator in A15 formulation, see update 28/08/2026
+   up_ndrPl = self%rNO3Pl*self%rNH4Pl + self%rNH4Pl*no3 + self%rNO3Pl*nh4
+   up_nh4Ps = self%rNO3Ps*nh4/up_ndrPs
+   up_nh4Pl = self%rNO3Pl*nh4/up_ndrPl
+   up_no3Ps = self%rNH4Ps*no3/up_ndrPs
+   up_no3Pl = self%rNH4Pl*no3/up_ndrPl
    up_nPs   = up_nh4Ps+up_no3Ps
    up_nPl   = up_nh4Pl+up_no3Pl
    up_phoPs = pho/(self%rPO4Ps+pho)

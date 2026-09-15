@@ -1,6 +1,6 @@
-# fabm_a20_v3y.yaml
+# fabm_a20_v3aa.yaml
 #
-# Adaptation of ECOSMO model for northern latitudes (A20 pan-Arctic domain >~50N), version 3y.
+# Adaptation of ECOSMO model for northern latitudes (A20 pan-Arctic domain >~50N), version 3aa.
 #
 # Phil Wallhead (PJW), NIVA Bergen, 10/07/2026
 #
@@ -260,6 +260,11 @@
 #                 Note that ERSEM B16 does not include PAR-sensitivity of nitrification, but rather a nonlinear dependence on
 #                 NH4 concentration that likely has a similar effect (to switch off nitrification in surface layers in summer).
 #                 -> A20v3y
+# PWA 28/08/2026  After fixing the erroneous time stamps for atmospheric data read by CICE (->v3z), we decided to replace the
+#                 Wroblewski-Fasham formulation with the substrate-based parameterization of PISCES, ERSEM (A15, B16), removing
+#                 the poorly-constrained parameters (psiPs, psiPl) (see niva_ecosmo.F90 update 28/08/2026). This change was
+#                 motivated by clear defecit/excess of NO3/NH4 uptake in MARTINI800v11c.
+#                 -> A20v3aa
 #
 #
 #References (short form)
@@ -331,7 +336,6 @@ instances:
 
       rNH4Ps     : 0.20     # NH4 half saturation for Ps      (mmolN/m3),                   default=0.20
       rNO3Ps     : 0.50     # NO3 half saturation for Ps      (mmolN/m3),                   default=0.50
-      psiPs      : 3.00     # NH4 inhibition for Ps           (m3/mmolN),                   default=3.00
       rPO4Ps     : 0.05     # PO4 half saturation for Ps      (mmolP/m3),                   default=0.05
       muPs       : 1.47     # max growth rate for Ps          (1/d),                        default=1.10, Modified PJW 30/05/2026, fitted to incubation data, see fit_model_nanoP_growth.m. mumax = muP * (alfaP/(alfaP+betaP)) * (betaP/(alfaP+betaP))^(betaP/alfaP) = 1.13 d-1.
       q10Ps      : 2.0      # Q_10 temperature coefficient for Ps  (-),                     default=1.0, Modified PJW 13/04/2026, fixed value, see fit_model_nanoP_growth.m.
@@ -348,7 +352,6 @@ instances:
 
       rNH4Pl     : 0.20     # NH4 half saturation for Pl      (mmolN/m3),                   default=0.20
       rNO3Pl     : 0.50     # NO3 half saturation for Pl      (mmolN/m3),                   default=0.50
-      psiPl      : 3.00     # NH4 inhibition for Pl           (m3/mmolN),                   default=3.00
       rPO4Pl     : 0.05     # PO4 half saturation for Pl      (mmolP/m3),                   default=0.05
       rSiPl      : 1.0      # SiO2 half saturation for Pl     (mmolSi/m3),                  default=0.50, Modified PJW 21/05/2026, see notes.
       minSiPl    : 0.0      # stop Si uptake below this concentration (mmolSi/m3),          default=0.0
