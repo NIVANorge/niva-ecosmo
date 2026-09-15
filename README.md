@@ -15,7 +15,7 @@ We aim for a target RTR value less than 3 such that long (e.g. decadal) simulati
 do not become prohibitive in terms of time demands and computational cost.
 
 The source code is provided in subfolder 'src', while 'example_configs' contains example fabm.yaml files and figures showing comparisons of
-model output time series with observations and skill assessments based on 4D point-to-point matchups to in situ observational data.
+model output time series with observations and skill assessments based on 4D point-to-point matchups to in situ observational data (including chlorophyll). Time series also compare monthly model output from surface layer with monthly satellite chlorophyll data from cmems_obs-oc_glo_bgc-plankton_my_l4-multi-4km_P1M.
 
 
 
