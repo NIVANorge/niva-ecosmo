@@ -216,6 +216,20 @@
 !                 formulation avoids this, and also maintains net limitation function <=1 (conceptually easier), avoids use
 !                 of the exponential function (reducing computational cost), and reduces the number of adjustable parameters.
 !
+! PWA 07/11/2026: Added mesozooplankton overwintering (diapause), following ERSEM B16 code.
+!
+! PWA 11/11/2026: 1) Corrected bugs in combination of total chlorophyll-specific and group chlorophyll-specific
+!                 contributions to light attenuation, and in computations of TSOM --- contributions needed to be added in
+!                 single calls for each variable since FABM replaces values when the same variable is added multiple times.
+!                 We also harmonized the factor ordering for TSOM and TSIM computations.
+!                 2) Fixed bug/anomaly that do_bottom was using the surface sinking speeds instead of depth-dependent values
+!                 calculated in get_vertical_movement. To avoid FABM code complexity and potential circular dependency
+!                 we simply recalculate the bottom sinking speeds within do_bottom. This implies negligible extra cost
+!                 and allows us to use the full bottom depth rather than midpoint depth of bottom cells, by adding an
+!                 extra dependency on standard variable bottom_depth_below_geoid.
+!                 3) Added calculation of mesozooplankton overwintering switch in do_surface, for use in dvm modules,
+!                 following ERSEM code.
+!
 !
 !References (short form)
 !
@@ -266,6 +280,7 @@
 ! !USES:
    use fabm_types
    use fabm_expressions
+   use fabm_builtin_models
    implicit none
 
 !  default: all is private.
@@ -288,13 +303,14 @@
       type (type_state_variable_id)         :: id_mesozoo, id_microzoo, id_dom, id_oxy
       type (type_state_variable_id)         :: id_dic, id_alk
       type (type_bottom_state_variable_id)  :: id_sed1, id_sed2, id_sed3, id_sed4
-      type (type_dependency_id)             :: id_depth, id_temp, id_salt, id_E0, id_om_cal
-      type (type_horizontal_dependency_id)  :: id_tbs, id_wnd, id_aice, id_day_length
+      type (type_dependency_id)             :: id_depth, id_temp, id_salt, id_E0, id_om_cal, id_totprey
+      type (type_horizontal_dependency_id)  :: id_tbs, id_wnd, id_aice, id_day_length, id_inttotprey
+      type (type_horizontal_dependency_id)  :: id_bottom_depth
       type (type_diagnostic_variable_id)    :: id_denit, id_primprod, id_secprod
       type (type_diagnostic_variable_id)    :: id_c2chl_fla, id_c2chl_dia, id_cocco, id_coccochl
       type (type_diagnostic_variable_id)    :: id_NlimPs, id_NlimPl, id_PlimPs, id_PlimPl, id_SilimPl
       type (type_diagnostic_variable_id)    :: id_NutlimPs, id_NutlimPl
-      type (type_horizontal_diagnostic_variable_id)    :: id_tbsout
+      type (type_horizontal_diagnostic_variable_id) :: id_tbsout, id_overwintering
 
 !     Model parameters
       real(rk) :: Exphy, ExPs, ExPl, rtsom_cnp, rtsim_s, rtsim_c_mesozoo
@@ -323,6 +339,7 @@
       real(rk) :: dissSEDO, burialRtO, burialRt2O
       real(rk) :: dissSEDCmax, dissSEDCmin, ndissSEDC, burialRtC, burialRt2C
       real(rk) :: releaseP, aTreleaseP, RelSEDp1, RelSEDp2
+      real(rk) :: minpreyZl, excwZl, mwZl
 
 !     ECOSMO modules
       logical  :: couple_co2 ! activates PML (Blackford, 2004) carbon module
@@ -371,6 +388,8 @@
 ! Everything else taken from yaml file
 !
    integer :: i
+   class (type_weighted_sum),pointer :: total_prey_calculator
+
    ! set Redfield ratios:
    redf(1) = 6.625_rk      !C_N
    redf(2) = 106.0_rk      !C_P
@@ -487,6 +506,9 @@
    call self%get_parameter( self%KE0mvZl, 'KE0mvZl',     'W/m2',       'Half-saturation PAR for Zl visual predation mortality', default=2.2_rk)
    call self%get_parameter( self%q10mZl,  'q10mZl',      '-',          'Q_10 temperature coefficient for Zl mortality', default=1.0_rk)
    call self%get_parameter( self%frmortZl,'frmortZl',    '-',          'dissolved fraction of Zl mortality', default=0.4_rk)
+   call self%get_parameter( self%minpreyZl,'minpreyZl',  'mg C/m^2',   'Zl food threshold for overwintering state', default=0.0_rk)
+   call self%get_parameter( self%excwZl,  'excwZl',      '1/d',        'Zl overwintering excretion/respiration rate', default=0.002_rk, scale_factor=1.0_rk/sedy0)
+   call self%get_parameter( self%mwZl,    'mwZl',        '1/d',        'Zl overwintering mortality rate', default=0.002_rk, scale_factor=1.0_rk/sedy0)
 
    ! stoichiometry parameters
    call self%get_parameter( self%eta_PQ,    'eta_PQ',    '-',          'photosynthetic quotient: moles O2 produced per mole C fixed', default=1.0_rk)
@@ -617,9 +639,12 @@
          'diagnostic coccolithophore biomass concentration', output=output_time_step_averaged)
    call self%register_diagnostic_variable(self%id_coccochl,'coccochl','mgCHL/m**3', &
          'diagnostic coccolithophore chlorophyll concentration', output=output_time_step_averaged)
+   call self%register_diagnostic_variable(self%id_overwintering,'overwintering','-', &
+         'Is mesozooplankton in diapause?',source=source_do_surface)
 
    ! Register dependencies
    call self%register_dependency(self%id_depth,standard_variables%depth)
+   call self%register_dependency(self%id_bottom_depth,standard_variables%bottom_depth_below_geoid)
    call self%register_dependency(self%id_temp,standard_variables%temperature)
    call self%register_dependency(self%id_salt,standard_variables%practical_salinity)
    call self%register_dependency(self%id_E0,type_bulk_standard_variable(name='E0_s')) !scalar PAR energy flux [W/m2]
@@ -634,16 +659,11 @@
    end if
 
    ! Register contributions to aggregate variables
-   ! light attenuation due to total chlorophyll:
+   ! light attenuation due to total chlorophyll-specific and group chlorophyll-specific contributions:
    call self%add_to_aggregate_variable(standard_variables%attenuation_coefficient_of_photosynthetic_radiative_flux, &
-         self%id_flachl,scale_factor=self%Exphy,include_background=.true.)
+         self%id_flachl,scale_factor=(self%Exphy+self%ExPs),include_background=.true.)
    call self%add_to_aggregate_variable(standard_variables%attenuation_coefficient_of_photosynthetic_radiative_flux, &
-         self%id_diachl,scale_factor=self%Exphy,include_background=.true.)
-   ! light attenuation due to small/large phytoplankton chlorophyll (group-specific):
-   call self%add_to_aggregate_variable(standard_variables%attenuation_coefficient_of_photosynthetic_radiative_flux, &
-         self%id_flachl,scale_factor=self%ExPs,include_background=.true.)
-   call self%add_to_aggregate_variable(standard_variables%attenuation_coefficient_of_photosynthetic_radiative_flux, &
-         self%id_diachl,scale_factor=self%ExPl,include_background=.true.)
+         self%id_diachl,scale_factor=(self%Exphy+self%ExPl),include_background=.true.)
    ! total chlorophyll:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='Chl_s',units='mg/m^3',aggregate_variable=.true.), &
          self%id_flachl,include_background=.true.)
@@ -652,52 +672,58 @@
    ! total suspended organic matter (dry weight):
    !fla:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_fla,scale_factor=1.e-3_rk*self%rtsom_cnp,include_background=.true.)
-   call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_fla,scale_factor=redf(11)*redf(16)*1.e-3_rk*redf(8)*self%rtsom_cnp,include_background=.true.)
-   call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_fla,scale_factor=redf(12)*redf(16)*1.e-3_rk*redf(9)*self%rtsom_cnp,include_background=.true.)
+         self%id_fla, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp,&
+         include_background=.true.)! [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
    !dia:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_dia,scale_factor=1.e-3_rk*self%rtsom_cnp,include_background=.true.)
-   call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_dia,scale_factor=redf(11)*redf(16)*1.e-3_rk*redf(8)*self%rtsom_cnp,include_background=.true.)
-   call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_dia,scale_factor=redf(12)*redf(16)*1.e-3_rk*redf(9)*self%rtsom_cnp,include_background=.true.)
+         self%id_dia, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp,&
+         include_background=.true.)! [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
    !microzoo:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_microzoo,scale_factor=1.e-3_rk*self%rtsom_cnp,include_background=.true.)
-   call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_microzoo,scale_factor=redf(11)*redf(16)*1.e-3_rk*redf(8)*self%rtsom_cnp,include_background=.true.)
-   call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_microzoo,scale_factor=redf(12)*redf(16)*1.e-3_rk*redf(9)*self%rtsom_cnp,include_background=.true.)
+         self%id_microzoo, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp,&
+         include_background=.true.)!      [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
    !mesozoo:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_mesozoo,scale_factor=1.e-3_rk*self%rtsom_cnp,include_background=.true.)
-   call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_mesozoo,scale_factor=redf(11)*redf(16)*1.e-3_rk*redf(8)*self%rtsom_cnp,include_background=.true.)
-   call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_mesozoo,scale_factor=redf(12)*redf(16)*1.e-3_rk*redf(9)*self%rtsom_cnp,include_background=.true.)
+         self%id_mesozoo, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp,&
+         include_background=.true.)!     [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
    !det:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_det,scale_factor=1.e-3_rk*self%rtsom_cnp,include_background=.true.)
-   call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_det,scale_factor=redf(11)*redf(16)*1.e-3_rk*redf(8)*self%rtsom_cnp,include_background=.true.)
-   call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_det,scale_factor=redf(12)*redf(16)*1.e-3_rk*redf(9)*self%rtsom_cnp,include_background=.true.)
+         self%id_det, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp,&
+         include_background=.true.)! [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
    ! total suspended inorganic matter (dry weight excluding sediments):
    !diatom frustules:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSIM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_dia,scale_factor=redf(13)*redf(16)*1.e-3_rk*redf(10)*self%rtsim_s,include_background=.true.)
+         self%id_dia, scale_factor = 1.e-3_rk*redf(16)*redf(13)*redf(10)*self%rtsim_s, include_background=.true.)
    !opal:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSIM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_opa,scale_factor=redf(13)*redf(16)*1.e-3_rk*redf(10)*self%rtsim_s,include_background=.true.)
+         self%id_opa, scale_factor = 1.e-3_rk*redf(16)*redf(13)*redf(10)*self%rtsim_s, include_background=.true.)
    !calcite:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSIM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_cal,scale_factor=redf(16)*1.e-3_rk*100.09_rk,include_background=.true.) !Here we assume a molecular weight or 100.09 g/mol for CaCO3
+         self%id_cal, scale_factor = 1.e-3_rk*redf(16)*100.09_rk, include_background=.true.) !Here we assume a molecular weight or 100.09 g/mol for CaCO3
    !mesozooplankton mineral content:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSIM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_mesozoo,scale_factor=1.e-3_rk*self%rtsim_c_mesozoo,include_background=.true.)
+         self%id_mesozoo, scale_factor = 1.e-3_rk*self%rtsim_c_mesozoo, include_background=.true.)
+
+   if (self%minpreyZl > 0) then
+     ! Create a submodel that will compute total mesozooplankton prey for us, and create a variable that will contain its depth integral.
+     ! This quantity will be depth integrated to determine whether we should be overwintering.
+     allocate(total_prey_calculator)
+     total_prey_calculator%units = 'mg C/m^3'
+     total_prey_calculator%result_output = output_none
+
+     call total_prey_calculator%add_component('fla',self%prefZlPs)
+     call total_prey_calculator%add_component('dia',self%prefZlPl)
+     call total_prey_calculator%add_component('microzoo',self%prefZlZs)
+     call total_prey_calculator%add_component('mesozoo',self%prefZlZl)
+     call total_prey_calculator%add_component('det',self%prefZlD)
+
+     call self%add_child(total_prey_calculator,'totprey_calculator',configunit=-1)
+
+     ! Create a link to the total prey, and request its depth-integrated value.
+     call self%register_dependency(self%id_totprey,'totprey','mg C/m^3','total carbon in prey')
+     call self%request_coupling(self%id_totprey,'totprey_calculator/result')
+     call self%register_expression_dependency(self%id_inttotprey,vertical_integral(self%id_totprey))
+   end if
 
    return
 
@@ -746,9 +772,11 @@ end subroutine initialize
    real(rk) :: sil_eq,u_opal,ndissO,dissO
    real(rk) :: calc_Ps,RainR,om_cal,t,calc,diss
    real(rk) :: rhs,rhs_nit,rhs_amm,rhs_pho,rhs_cal,rhs_oxy
+   real(rk) :: intpreyZl=0.0_rk
 !EOP
 !-----------------------------------------------------------------------
 !BOC
+
    ! Enter spatial loops (if any)
    _LOOP_BEGIN_
 
@@ -773,6 +801,11 @@ end subroutine initialize
    _GET_(self%id_opa,opa)
    _GET_(self%id_cal,cal)
    _GET_(self%id_oxy,oxy)
+
+   ! Get depth-integrated prey in mg C/m^2
+   if (self%minpreyZl > 0.0_rk) then
+     _GET_HORIZONTAL_(self%id_inttotprey,intpreyZl)
+   end if
 
    ! Retrieve current (local) diagnostic variable values.
    _GET_(self%id_om_cal,om_cal)
@@ -854,24 +887,33 @@ end subroutine initialize
    mortPs  = mort1Ps + mort2Ps
    mortPl  = mort1Pl + mort2Pl
 
-   ! grazing/feeding fluxes
+   ! microzooplankton grazing/feeding fluxes
    Fs = self%prefZsPs*fla + self%prefZsPl*dia + self%prefZsZs*microzoo + self%prefZsD*det
-   Fl = self%prefZlPs*fla + self%prefZlPl*dia + self%prefZlZs*microzoo + self%prefZlZl*mesozoo &
-       + self%prefZlD*det
-
    etZs = self%q10Zs**((temp-10._rk)/10._rk)
-   etZl = self%q10Zl**((temp-10._rk)/10._rk)
-
    ZsonPs = fla_loss * self%GrZsPs * etZs * self%prefZsPs * fla/(self%RgZs + Fs) * microzoo
    ZsonPl = dia_loss * self%GrZsPl * etZs * self%prefZsPl * dia/(self%RgZs + Fs) * microzoo
    ZsonZs = mic_loss * self%GrZsZs * etZs * self%prefZsZs * microzoo/(self%RgZs + Fs) * microzoo
    ZsonD  =            self%GrZsD  * etZs * self%prefZsD  * det/(self%RgZs + Fs)  * microzoo
 
-   ZlonPs = fla_loss * self%GrZlPs * etZl * self%prefZlPs * fla/(self%RgZl + Fl) * mesozoo
-   ZlonPl = dia_loss * self%GrZlPl * etZl * self%prefZlPl * dia/(self%RgZl + Fl) * mesozoo
-   ZlonZs = mic_loss * self%GrZlZs * etZl * self%prefZlZs * microzoo/(self%RgZl + Fl) * mesozoo
-   ZlonZl = mes_loss * self%GrZlZl * etZl * self%prefZlZl * mesozoo/(self%RgZl + Fl) * mesozoo
-   ZlonD =             self%GrZlD  * etZl * self%prefZlD  * det/(self%RgZl + Fl)  * mesozoo
+   ! mesozooplankton grazing/feeding fluxes
+   if (intpreyZl >= self%minpreyZl) then
+     ! Enough prey available - not overwintering
+     Fl = self%prefZlPs*fla + self%prefZlPl*dia + self%prefZlZs*microzoo + self%prefZlZl*mesozoo &
+         + self%prefZlD*det
+     etZl = self%q10Zl**((temp-10._rk)/10._rk)
+
+     ZlonPs = fla_loss * self%GrZlPs * etZl * self%prefZlPs * fla/(self%RgZl + Fl) * mesozoo
+     ZlonPl = dia_loss * self%GrZlPl * etZl * self%prefZlPl * dia/(self%RgZl + Fl) * mesozoo
+     ZlonZs = mic_loss * self%GrZlZs * etZl * self%prefZlZs * microzoo/(self%RgZl + Fl) * mesozoo
+     ZlonZl = mes_loss * self%GrZlZl * etZl * self%prefZlZl * mesozoo/(self%RgZl + Fl) * mesozoo
+     ZlonD  =             self%GrZlD  * etZl * self%prefZlD  * det/(self%RgZl + Fl)  * mesozoo
+   else
+     ZlonPs = 0.0_rk
+     ZlonPl = 0.0_rk
+     ZlonZs = 0.0_rk
+     ZlonZl = 0.0_rk
+     ZlonD  = 0.0_rk
+   endif
 
    ! unitary switching functions
    f_O2pos   = 1.0_rk
@@ -918,12 +960,19 @@ end subroutine initialize
    inZlD    = (1._rk-self%fGslpZlD) *ZlonD
    egesZl   =  (1._rk-self%gammaZlP)*inZlPZ &                       !egestion -> DOM,POM
              + (1._rk-self%gammaZlD)*inZlD
-   excrZl   = self%excZl*etZl*mes_loss * mesozoo &                  !basal excretion/respiration
-             + self%fAexcZl*(self%gammaZlP*inZlPZ &                 !activity excretion/respiration as fraction of absorbed
-             +               self%gammaZlD*inZlD)                   ! -> DOM,DIC/NUT
+
    etmZl    = self%q10mZl**((temp-10._rk)/10._rk)
-   mZlt     = self%mZl + self%mvZl*E0c/(self%KE0mvZl+E0c)           !total mortality rate inc. visual predation
-   mortZl   = mZlt*etmZl*mes_loss * mesozoo
+   if (intpreyZl >= self%minpreyZl) then
+     ! Enough prey available - not overwintering
+     excrZl   = self%excZl*etZl*mes_loss * mesozoo &                !basal excretion/respiration
+               + self%fAexcZl*(self%gammaZlP*inZlPZ &               !activity excretion/respiration as fraction of absorbed
+               +               self%gammaZlD*inZlD)                 ! -> DOM,DIC/NUT
+     mZlt     = self%mZl + self%mvZl*E0c/(self%KE0mvZl+E0c)         !total mortality rate inc. visual predation
+     mortZl   = mZlt*etmZl*mes_loss * mesozoo
+   else
+     excrZl   = self%excwZl*etZl*mes_loss * mesozoo                 !overwintering excretion/respiration
+     mortZl   = self%mwZl*etmZl*mes_loss * mesozoo                  !overwintering mortality
+   endif
    prodZl   = inZlPZ + inZlD - egesZl                               !contribution to 'secondary production'
    _ADD_SOURCE_(self%id_mesozoo, prodZl - excrZl - mortZl - ZlonZl)
 
@@ -1068,9 +1117,11 @@ end subroutine initialize
 
    real(rk) :: O2o,ETW,T,X1X,wnd,aice
    real(rk) :: OSAT,sc,ko2o,FAIRO2
+   real(rk) :: intprey
 
    _HORIZONTAL_LOOP_BEGIN_
 
+!  ! Calculate air-sea oxygen flux
    _GET_(self%id_oxy,O2o) ! NOTE: Both NERSEM and ECOSMO codes use O2 in [mmolO2/m3]
    _GET_(self%id_temp,ETW)
    _GET_(self%id_salt,X1X)
@@ -1098,7 +1149,23 @@ end subroutine initialize
 
    FAIRO2 = ko2o*(OSAT-O2o)
 
-   _ADD_SURFACE_FLUX_(self%id_oxy,FAIRO2)
+   _ADD_SURFACE_FLUX_(self%id_oxy,FAIRO2) !Set air-sea oxygen flux
+
+
+!  ! Calculate mesozooplankton overwintering switch
+
+   ! Get depth-integrated prey in mg C/m^2
+   if (self%minpreyZl > 0.0_rk) then
+      _GET_HORIZONTAL_(self%id_inttotprey,intprey)
+   end if
+
+   if (intprey >= self%minpreyZl) then
+      ! Enough prey available - not overwintering
+      _SET_HORIZONTAL_DIAGNOSTIC_(self%id_overwintering, 0.0_rk)
+   else
+      ! Not enough prey available - overwintering
+      _SET_HORIZONTAL_DIAGNOSTIC_(self%id_overwintering, 1.0_rk)
+   end if
 
    ! Leave spatial loops over the horizontal domain (if any)
    _HORIZONTAL_LOOP_END_
@@ -1119,7 +1186,7 @@ end subroutine initialize
 !
 ! !LOCAL VARIABLES:
    real(rk) :: temp, oxy, no3, det, opa, cal, sed1, sed2, sed3, sed4
-   real(rk) :: tbs, om_cal
+   real(rk) :: tbs, om_cal, depth, w_det, w_opa, w_cal
    real(rk) :: Rds, RdsO, RdsC, Rsd
    real(rk) :: settle, resusp, remSED, burSED, denitSED, lossND
    real(rk) :: yt1, yt2, releaseP
@@ -1149,6 +1216,11 @@ end subroutine initialize
    om_cal    = max(om_cal, 0._rk)
    _GET_HORIZONTAL_(self%id_tbs,tbs)
 
+   _GET_HORIZONTAL_(self%id_bottom_depth,depth)     ! depth of bottom (m)
+   depth = abs(depth) ! some host models may report depth as negative
+   w_det = self%sinkD + self%cz_sinkD * depth
+   w_opa = self%sinkOPAL + self%cz_sinkOPAL * depth
+   w_cal = self%sinkCAL + self%cz_sinkCAL * depth
 
    ! unitary redox switching functions
    f_O2pos   = 1.0_rk
@@ -1173,9 +1245,9 @@ end subroutine initialize
      RdsC   = 0.0_rk
    else
      Rsd    = 0.0_rk
-     Rds    = self%sinkD
-     RdsO   = self%sinkOPAL
-     RdsC   = self%sinkCAL
+     Rds    = w_det
+     RdsO   = w_opa
+     RdsC   = w_cal
    end if
 
    ! sediment organic matter (sed1)
