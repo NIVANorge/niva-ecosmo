@@ -229,6 +229,8 @@
 !                 extra dependency on standard variable bottom_depth_below_geoid.
 !                 3) Added calculation of mesozooplankton overwintering switch in do_surface, for use in dvm modules,
 !                 following ERSEM code.
+!                 4) Revised extinction-prevention switch calculation to use new parameters (c0Pz,c0Pl,c0Zs,c0Zl) to replace
+!                 hard-coded values (0.1,0.1,0.01,0.01) mgC/m3. Also removed redundant negative signs.
 !
 !
 !References (short form)
@@ -314,6 +316,7 @@
 
 !     Model parameters
       real(rk) :: Exphy, ExPs, ExPl, rtsom_cnp, rtsim_s, rtsim_c_mesozoo
+      real(rk) :: c0Ps, c0Pl, c0Zs, c0Zl
       real(rk) :: rNH4Ps, rNO3Ps, rPO4Ps
       real(rk) :: muPs, q10Ps, gammaDPs, alfaPs, betaPs, MINchl2cPs, MAXchl2cPs
       real(rk) :: amortPs, m1Ps, m2Ps, frmort1Ps, frmort2Ps
@@ -421,6 +424,7 @@
    call self%get_parameter( self%rtsim_c_mesozoo,'rtsim_c_mesozoo','-','ratio of total suspended inorganic mass (dry) to total carbon mass in mesozooplankton', default=0.1583_rk)
 
    ! small phytoplankton parameters
+   call self%get_parameter( self%c0Ps,    'c0Ps',        'mgC/m3',     'background carbon concentration for Ps', default=0.1_rk)
    call self%get_parameter( self%rNH4Ps,  'rNH4Ps',      'mmolN/m3',   'NH4 half saturation for Ps',      default=0.20_rk,  scale_factor=redf(1)*redf(6))
    call self%get_parameter( self%rNO3Ps,  'rNO3Ps',      'mmolN/m3',   'NO3 half saturation for Ps',      default=0.50_rk,  scale_factor=redf(1)*redf(6))
    call self%get_parameter( self%rPO4Ps,  'rPO4Ps',      'mmolP/m3',   'PO4 half saturation for Ps',      default=0.05_rk,  scale_factor=redf(2)*redf(6))
@@ -438,6 +442,7 @@
    call self%get_parameter( self%frmort2Ps,'frmort2Ps',  '-',          'dissolved fraction of quadratic mortality', default=0.4_rk)
 
    ! large phytoplankton parameters
+   call self%get_parameter( self%c0Pl,    'c0Pl',        'mgC/m3',     'background carbon concentration for Pl', default=0.1_rk)
    call self%get_parameter( self%rNH4Pl,  'rNH4Pl',      'mmolN/m3',   'NH4 half saturation for Pl',      default=0.20_rk,  scale_factor=redf(1)*redf(6))
    call self%get_parameter( self%rNO3Pl,  'rNO3Pl',      'mmolN/m3',   'NO3 half saturation for Pl',      default=0.50_rk,  scale_factor=redf(1)*redf(6))
    call self%get_parameter( self%rPO4Pl,  'rPO4Pl',      'mmolP/m3',   'PO4 half saturation for Pl',      default=0.05_rk,  scale_factor=redf(2)*redf(6))
@@ -457,6 +462,7 @@
    call self%get_parameter( self%frmort2Pl,'frmort2Pl',  '-',          'dissolved fraction of quadratic mortality', default=0.0_rk)
 
    ! small zooplankton parameters
+   call self%get_parameter( self%c0Zs,    'c0Zs',        'mgC/m3',     'background carbon concentration for Zs', default=0.01_rk)
    call self%get_parameter( self%GrZsPs,  'GrZsPs',      '1/day',      'Grazing rate Zs on Ps',           default=1.00_rk,  scale_factor=1.0_rk/sedy0)
    call self%get_parameter( self%GrZsPl,  'GrZsPl',      '1/day',      'Grazing rate Zs on Pl',           default=1.00_rk,  scale_factor=1.0_rk/sedy0)
    call self%get_parameter( self%GrZsZs,  'GrZsZs',      '1/day',      'Grazing rate Zs on Zs',           default=0.00_rk,  scale_factor=1.0_rk/sedy0)
@@ -478,6 +484,7 @@
    call self%get_parameter( self%frmortZs,'frmortZs',    '-',          'dissolved fraction of Zs mortality', default=0.4_rk)
 
    ! large zooplankton parameters
+   call self%get_parameter( self%c0Zl,    'c0Zl',        'mgC/m3',     'background carbon concentration for Zl', default=0.01_rk)
    call self%get_parameter( self%GrZlPs,  'GrZlPs',      '1/day',      'Grazing rate Zl on Ps',           default=0.80_rk,  scale_factor=1.0_rk/sedy0)
    call self%get_parameter( self%GrZlPl,  'GrZlPl',      '1/day',      'Grazing rate Zl on Pl',           default=0.80_rk,  scale_factor=1.0_rk/sedy0)
    call self%get_parameter( self%GrZlZs,  'GrZlZs',      '1/day',      'Grazing rate Zl on Zs',           default=0.50_rk,  scale_factor=1.0_rk/sedy0)
@@ -661,48 +668,48 @@
    ! Register contributions to aggregate variables
    ! light attenuation due to total chlorophyll-specific and group chlorophyll-specific contributions:
    call self%add_to_aggregate_variable(standard_variables%attenuation_coefficient_of_photosynthetic_radiative_flux, &
-         self%id_flachl,scale_factor=(self%Exphy+self%ExPs),include_background=.true.)
+         self%id_flachl,scale_factor=(self%Exphy+self%ExPs))
    call self%add_to_aggregate_variable(standard_variables%attenuation_coefficient_of_photosynthetic_radiative_flux, &
-         self%id_diachl,scale_factor=(self%Exphy+self%ExPl),include_background=.true.)
+         self%id_diachl,scale_factor=(self%Exphy+self%ExPl))
    ! total chlorophyll:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='Chl_s',units='mg/m^3',aggregate_variable=.true.), &
-         self%id_flachl,include_background=.true.)
+         self%id_flachl)
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='Chl_s',units='mg/m^3',aggregate_variable=.true.), &
-         self%id_diachl,include_background=.true.)
+         self%id_diachl)
    ! total suspended organic matter (dry weight):
    !fla:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_fla, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp,&
-         include_background=.true.)! [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
+         self%id_fla, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp)
+                                   ! [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
    !dia:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_dia, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp,&
-         include_background=.true.)! [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
+         self%id_dia, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp)
+                                   ! [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
    !microzoo:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_microzoo, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp,&
-         include_background=.true.)!      [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
+         self%id_microzoo, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp)
+                                   !      [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
    !mesozoo:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_mesozoo, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp,&
-         include_background=.true.)!     [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
+         self%id_mesozoo, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp)
+                                   !      [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
    !det:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSOM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_det, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp,&
-         include_background=.true.)! [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
+         self%id_det, scale_factor = 1.e-3_rk*(1._rk + redf(16)*redf(11)*redf(8) + redf(16)*redf(12)*redf(9))*self%rtsom_cnp)
+                                   ! [m3/L]   mgC/m3 + mgN/m3                    + mgP/m3
    ! total suspended inorganic matter (dry weight excluding sediments):
    !diatom frustules:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSIM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_dia, scale_factor = 1.e-3_rk*redf(16)*redf(13)*redf(10)*self%rtsim_s, include_background=.true.)
+         self%id_dia, scale_factor = 1.e-3_rk*redf(16)*redf(13)*redf(10)*self%rtsim_s)
    !opal:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSIM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_opa, scale_factor = 1.e-3_rk*redf(16)*redf(13)*redf(10)*self%rtsim_s, include_background=.true.)
+         self%id_opa, scale_factor = 1.e-3_rk*redf(16)*redf(13)*redf(10)*self%rtsim_s)
    !calcite:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSIM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_cal, scale_factor = 1.e-3_rk*redf(16)*100.09_rk, include_background=.true.) !Here we assume a molecular weight or 100.09 g/mol for CaCO3
+         self%id_cal, scale_factor = 1.e-3_rk*redf(16)*100.09_rk) !Here we assume a molecular weight or 100.09 g/mol for CaCO3
    !mesozooplankton mineral content:
    call self%add_to_aggregate_variable(type_bulk_standard_variable(name='TSIM_s',units='mg/L',aggregate_variable=.true.), &
-         self%id_mesozoo, scale_factor = 1.e-3_rk*self%rtsim_c_mesozoo, include_background=.true.)
+         self%id_mesozoo, scale_factor = 1.e-3_rk*self%rtsim_c_mesozoo)
 
    if (self%minpreyZl > 0) then
      ! Create a submodel that will compute total mesozooplankton prey for us, and create a variable that will contain its depth integral.
@@ -816,10 +823,10 @@ end subroutine initialize
    !          the equations. The idea is to keep plankton safe from extinction.
    ! loss terms are multiplied by the constants below, which can only be set
    ! by the model to 0 or 1.
-   fla_loss = max(sign(-1.0_rk,fla-0.1_rk),0.0_rk)       ! flagellates
-   dia_loss = max(sign(-1.0_rk,dia-0.1_rk),0.0_rk)       ! diatoms
-   mic_loss = max(sign(-1.0_rk,microzoo-0.01_rk),0.0_rk) ! microzooplankton
-   mes_loss = max(sign(-1.0_rk,mesozoo-0.01_rk),0.0_rk)  ! mesozooplankton
+   fla_loss = max(sign(1.0_rk,fla-self%c0Ps),0.0_rk)       ! flagellates
+   dia_loss = max(sign(1.0_rk,dia-self%c0Pl),0.0_rk)       ! diatoms
+   mic_loss = max(sign(1.0_rk,microzoo-self%c0Zs),0.0_rk)  ! microzooplankton
+   mes_loss = max(sign(1.0_rk,mesozoo-self%c0Zl),0.0_rk)   ! mesozooplankton
 
    ! nutrient limitation factors
    up_ndrPs = self%rNO3Ps*self%rNH4Ps + self%rNH4Ps*no3 + self%rNO3Ps*nh4 ! denominator in A15 formulation, see update 28/08/2026
