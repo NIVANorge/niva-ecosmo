@@ -216,9 +216,9 @@
 !                 formulation avoids this, and also maintains net limitation function <=1 (conceptually easier), avoids use
 !                 of the exponential function (reducing computational cost), and reduces the number of adjustable parameters.
 !
-! PWA 07/11/2026: Added mesozooplankton overwintering (diapause), following ERSEM B16 code.
+! PJw 07/11/2026: Added mesozooplankton overwintering (diapause), following ERSEM B16 code.
 !
-! PWA 11/11/2026: 1) Corrected bugs in combination of total chlorophyll-specific and group chlorophyll-specific
+! PJW 11/11/2026: 1) Corrected bugs in combination of total chlorophyll-specific and group chlorophyll-specific
 !                 contributions to light attenuation, and in computations of TSOM --- contributions needed to be added in
 !                 single calls for each variable since FABM replaces values when the same variable is added multiple times.
 !                 We also harmonized the factor ordering for TSOM and TSIM computations.
@@ -231,6 +231,17 @@
 !                 following ERSEM code.
 !                 4) Revised extinction-prevention switch calculation to use new parameters (c0Pz,c0Pl,c0Zs,c0Zl) to replace
 !                 hard-coded values (0.1,0.1,0.01,0.01) mgC/m3. Also removed redundant negative signs.
+!
+! PJW 20/11/2026: Added parameterization of the effect of starvation-enhancement of maximum mesozooplankton grazing rates
+!                 based on experimental incubation data from Hassett and Landry (1988).
+!                 This introduces two new parameters (dfGpd_starved, tauGrelax) = (24/18, 12/24) based on HL88.
+!                 The effect is switched off by default value dfGpd_starved = 0 (note: must always have tauGrelax>0).
+!                 The parameterization assumes an instantaneous peak fractional enhancement by dfGpd_starved*D at the
+!                 beginning of the (nighttime) feeding period, where D is the daylength in days, followed by a linear
+!                 relaxation to zero enhancement over a period of tauGrelax days.
+!                 We assume that this behaviour extrapolates to 24-hour daylength situation: the mesoZ remain 'hungry'
+!                 during the full 24 hours as they seek to minimize predator contact, leading them to feed at generally
+!                 low concentrations that maintain the hungry state.
 !
 !
 !References (short form)
@@ -247,6 +258,7 @@
 ! Feng et al. (2015) (F15), doi:10.1002/2015JG002931
 ! Geider et al. (1997), doi:10.3354/meps148187
 ! Gilstad and Sakshaug (1990), Marine Ecology Progress Series 64: 169-173.
+! Hassett and Landry (1988), doi:10.1007/BF00644978
 ! Johnsen and Sakshaug (2007), doi:10.1111/j.1529-8817.2007.00422.x
 ! Kemp et al. (1990), doi:10.4319/lo.1990.35.7.1545
 ! Laws (1991), doi:10.1016/0198-0149(91)90059-O
@@ -343,6 +355,7 @@
       real(rk) :: dissSEDCmax, dissSEDCmin, ndissSEDC, burialRtC, burialRt2C
       real(rk) :: releaseP, aTreleaseP, RelSEDp1, RelSEDp2
       real(rk) :: minpreyZl, excwZl, mwZl
+      real(rk) :: dfGpd_starved, tauGrelax
 
 !     ECOSMO modules
       logical  :: couple_co2 ! activates PML (Blackford, 2004) carbon module
@@ -516,6 +529,8 @@
    call self%get_parameter( self%minpreyZl,'minpreyZl',  'mg C/m^2',   'Zl food threshold for overwintering state', default=0.0_rk)
    call self%get_parameter( self%excwZl,  'excwZl',      '1/d',        'Zl overwintering excretion/respiration rate', default=0.002_rk, scale_factor=1.0_rk/sedy0)
    call self%get_parameter( self%mwZl,    'mwZl',        '1/d',        'Zl overwintering mortality rate', default=0.002_rk, scale_factor=1.0_rk/sedy0)
+   call self%get_parameter( self%dfGpd_starved,'dfGpd_starved','1/d',  'Zl change in peak grazing enhancement factor per 24 hours of starvation', default=0.0_rk)
+   call self%get_parameter( self%tauGrelax,'tauGrelax',  'd',          'Zl timescale of linear relaxation after peak grazing enhancement', default=0.5_rk)
 
    ! stoichiometry parameters
    call self%get_parameter( self%eta_PQ,    'eta_PQ',    '-',          'photosynthetic quotient: moles O2 produced per mole C fixed', default=1.0_rk)
@@ -770,7 +785,7 @@ end subroutine initialize
    real(rk) :: NutfacmPs,NutfacmPl
    real(rk) :: mort1Ps,mort1Pl,mort2Ps,mort2Pl,mortPs,mortPl
    real(rk) :: Fs,etZs,ZsonPs,ZsonPl,ZsonZs,ZsonD
-   real(rk) :: Fl,etZl,ZlonPs,ZlonPl,ZlonZs,ZlonZl,ZlonD
+   real(rk) :: Fl,etZl,fG,ZlonPs,ZlonPl,ZlonZs,ZlonZl,ZlonD
    real(rk) :: f_O2pos,f_O2resp,f_denit,f_SO4resp
    real(rk) :: egesZs,excrZs,etmZs,mortZs,prodZs
    real(rk) :: inZlPs,inZlPl,inZlZs,inZlZl,inZlPZ,inZlD
@@ -909,11 +924,18 @@ end subroutine initialize
          + self%prefZlD*det
      etZl = self%q10Zl**((temp-10._rk)/10._rk)
 
-     ZlonPs = fla_loss * self%GrZlPs * etZl * self%prefZlPs * fla/(self%RgZl + Fl) * mesozoo
-     ZlonPl = dia_loss * self%GrZlPl * etZl * self%prefZlPl * dia/(self%RgZl + Fl) * mesozoo
-     ZlonZs = mic_loss * self%GrZlZs * etZl * self%prefZlZs * microzoo/(self%RgZl + Fl) * mesozoo
-     ZlonZl = mes_loss * self%GrZlZl * etZl * self%prefZlZl * mesozoo/(self%RgZl + Fl) * mesozoo
-     ZlonD  =             self%GrZlD  * etZl * self%prefZlD  * det/(self%RgZl + Fl)  * mesozoo
+     ! Calculate enhancement factor for maximum grazing rates due to starvation-hunger response (PJW, 20/11/2026)
+     if ((1._rk-D).gt.self%tauGrelax) then
+       fG = 1._rk + self%dfGpd_starved*D/2._rk*self%tauGrelax / (1._rk-D) !1 + (triangle integration segment)/nightlength
+     else
+       fG = 1._rk + self%dfGpd_starved*D * (2._rk - (1._rk-D)/self%tauGrelax)/2._rk !1 + (trapezium integration segment)/nightlength
+     endif
+
+     ZlonPs = fla_loss * self%GrZlPs * etZl * fG * self%prefZlPs * fla/(self%RgZl + Fl) * mesozoo
+     ZlonPl = dia_loss * self%GrZlPl * etZl * fG * self%prefZlPl * dia/(self%RgZl + Fl) * mesozoo
+     ZlonZs = mic_loss * self%GrZlZs * etZl * fG * self%prefZlZs * microzoo/(self%RgZl + Fl) * mesozoo
+     ZlonZl = mes_loss * self%GrZlZl * etZl * fG * self%prefZlZl * mesozoo/(self%RgZl + Fl) * mesozoo
+     ZlonD  =            self%GrZlD  * etZl * fG * self%prefZlD  * det/(self%RgZl + Fl)  * mesozoo
    else
      ZlonPs = 0.0_rk
      ZlonPl = 0.0_rk
