@@ -233,9 +233,10 @@
 !                 hard-coded values (0.1,0.1,0.01,0.01) mgC/m3. Also removed redundant negative signs.
 !
 ! PJW 20/11/2026: Added parameterization of the effect of starvation-enhancement of maximum mesozooplankton grazing rates
-!                 based on experimental incubation data from Hassett and Landry (1988).
+!                 due to DVM behaviour, based on experimental incubation data from Hassett and Landry (1988).
 !                 This introduces two new parameters (dfGpd_starved, tauGrelax) = (24/18, 12/24) based on HL88.
-!                 The effect is switched off by default value dfGpd_starved = 0 (note: must always have tauGrelax>0).
+!                 The effect is switched off by default value dfGpd_starved = 0; the effect should always be switched
+!                 off when there is no representation of diel vertical migration (note: we must always have tauGrelax>0).
 !                 The parameterization assumes an instantaneous peak fractional enhancement by dfGpd_starved*D at the
 !                 beginning of the (nighttime) feeding period, where D is the daylength in days, followed by a linear
 !                 relaxation to zero enhancement over a period of tauGrelax days.
